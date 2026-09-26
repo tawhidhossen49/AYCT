@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07070a">
+  <title>Amaze Youth Chess Tournament 2026 · Think. Play. Become legendary.</title>
+  <meta name="description" content="Thirty-two young players, eight groups, one champion. The official home of the Amaze Youth Chess Tournament: format, road to the final, and the portal where every game is played live.">
+  <meta property="og:title" content="Amaze Youth Chess Tournament 2026">
+  <meta property="og:description" content="32 players. 8 groups. 63 games. One champion.">
+  <meta property="og:image" content="assets/brand/rook.webp">
+  <link rel="icon" type="image/png" href="assets/brand/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Manrope:wght@400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/fill/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/bold/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chessground@9.2.1/assets/chessground.base.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chessground@9.2.1/assets/chessground.cburnett.css">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/landing.css">
+  <link rel="preload" as="image" href="assets/brand/rook.webp">
+  <script>document.documentElement.classList.remove("no-js"); if (matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("reduced");</script>
+  <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/ScrollTrigger.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/SplitText.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/lenis@1.3.26/dist/lenis.min.js"></script>
+</head>
+<body>
+  <!-- 0. Preloader -->
+  <div class="preloader" aria-hidden="true">
+    <div class="preloader__ring">
+      <svg viewBox="0 0 132 132">
+        <defs><linearGradient id="chromeStroke" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".5" stop-color="#9ea3ad"/><stop offset="1" stop-color="#eceef2"/></linearGradient></defs>
+        <circle class="track" cx="66" cy="66" r="62"/>
+        <circle class="bar" cx="66" cy="66" r="62" stroke-dasharray="389.6" stroke-dashoffset="389.6"/>
+      </svg>
+      <img src="assets/brand/logo.png" alt="">
+      <span class="preloader__count">0</span>
+    </div>
+  </div>
+
+  <!-- 1. Nav -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="#top" class="brand" aria-label="Amaze Youth Chess Tournament, back to top">
+        <img src="assets/brand/logo.png" alt="" width="32" height="32">
+        <span class="brand-text"><span class="display">Amaze Youth Chess</span><span class="display-light">Tournament <span data-year>2026</span></span></span>
+      </a>
+      <nav class="nav" aria-label="Sections">
+        <a href="#format">Format</a>
+        <a href="#road">Road</a>
+        <a href="#groups">Groups</a>
+        <a href="#play">Play</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <a class="btn btn-primary btn-sm nav-cta" href="login.html" data-portal-link data-magnetic>Sign in <i class="ph-bold ph-arrow-up-right"></i></a>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- 2. Hero -->
+    <section class="hl" aria-label="Amaze Youth Chess Tournament">
+      <div class="hl__stage">
+        <!-- Hero video slot: set data-sequence="assets/sequences/hero/" once the clip is extracted. -->
+        <canvas class="hl__seq" aria-hidden="true" data-sequence=""></canvas>
+        <div class="hl__glow"></div>
+        <span class="ghost hl__ghost" aria-hidden="true">Checkmate Checkmate</span>
+        <img class="hl__piece hl__pawn" src="assets/brand/pawn.webp" alt="" aria-hidden="true" width="452" height="1040">
+        <img class="hl__piece hl__rook" src="assets/brand/rook.webp" alt="" aria-hidden="true" width="570" height="1600" fetchpriority="high">
+
+        <div class="hl__copy">
+          <img class="hl__logo" src="assets/brand/logo.png" alt="" data-hero-in>
+          <h1 class="hl__title">
+            <span class="display" data-hero-line>Amaze Youth Chess</span>
+            <span class="display-light chrome-text" data-hero-line>Tournament <span data-year>2026</span></span>
+          </h1>
+          <div class="hl__captions" aria-label="Think. Play. Become legendary.">
+            <span class="hl__cap">Think.</span>
+            <span class="hl__cap">Play.</span>
+            <span class="hl__cap">Become legendary.</span>
+          </div>
+          <div class="hl__ctas" data-hero-in>
+            <a class="btn btn-primary btn-lg" href="login.html" data-portal-link data-magnetic>Enter the portal <i class="ph-bold ph-arrow-right"></i></a>
+            <a class="btn btn-lg" href="#format" data-magnetic>See the format</a>
+          </div>
+        </div>
+
+        <div class="hl__meta" aria-hidden="true">
+          <span>Edition <span data-year>2026</span></span>
+          <span>32 players · 1 champion</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Ticker -->
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker__track">
+        <span class="ticker__item">32 Players <img src="assets/brand/logo.png" alt=""></span>
+        <span class="ticker__item soft">8 Groups <img src="assets/brand/logo.png" alt=""></span>
+        <span class="ticker__item">63 Games <img src="assets/brand/logo.png" alt=""></span>
+        <span class="ticker__item soft">5 Rounds <img src="assets/brand/logo.png" alt=""></span>
+        <span class="ticker__item">One Champion <img src="assets/brand/logo.png" alt=""></span>
+        <span class="ticker__item soft">Think. Play. Become legendary. <img src="assets/brand/logo.png" alt=""></span>
+      </div>
+    </div>
+
+    <!-- 4. Manifesto -->
+    <section class="section" id="story">
+      <div class="wrap-x">
+        <p class="eyebrow" data-reveal>The story</p>
+        <p class="manifesto mt-6" data-words>Every year the sharpest young minds sit down across sixty-four squares. Thirty-two arrive. Eight groups, one road, and a single player walks away as champion.</p>
+      </div>
+    </section>
+
+    <!-- 5. Format -->
+    <section class="section" id="format" style="padding-top:0">
+      <div class="wrap-x">
+        <h2 class="h2" data-split>The format, <span class="soft">at a glance</span></h2>
+        <p class="lede" data-reveal>Built like the World Cup: a group stage where everyone plays everyone, then straight knockouts all the way to the final.</p>
+
+        <div class="bento" data-stagger>
+          <article class="panel lit b-hero">
+            <img src="assets/brand/rook.webp" alt="" aria-hidden="true" width="570" height="1600" loading="lazy">
+            <span class="eyebrow">Field</span>
+            <div>
+              <p class="stat chrome-text" data-count="32">32</p>
+              <p class="label">Players</p>
+              <p class="mt-2">Invited by the organisers, each with a rating that moves after every game.</p>
+            </div>
+          </article>
+          <article class="panel">
+            <span class="eyebrow">Groups</span>
+            <div><p class="stat" data-count="8">8</p><p class="label">Groups of four</p></div>
+          </article>
+          <article class="panel">
+            <span class="eyebrow">Games</span>
+            <div><p class="stat" data-count="63">63</p><p class="label">Games in total</p></div>
+          </article>
+          <article class="panel b-wide">
+            <span class="eyebrow">Clock</span>
+            <div class="row between wrap gap-4">
+              <p class="stat">10<span class="dim">+</span>5</p>
+              <p>Ten minutes each, plus five seconds for every move. Run by the server, so it's the same on every screen.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Road to the Crown -->
+    <section class="road" id="road">
+      <div class="road__pin">
+        <div class="road__head">
+          <div>
+            <p class="eyebrow">The road to the crown</p>
+            <h2 class="h2 mt-4" data-split>Thirty-two <span class="soft">in.</span><br>One <span class="soft">out.</span></h2>
+          </div>
+          <div class="road__count chrome-text" aria-live="polite"><span data-road-count>32</span><small>players left</small></div>
+        </div>
+
+        <div class="road__track">
+          <article class="panel stage-card" data-left="32">
+            <div><p class="step">3 rounds · 48 games</p><h3>Group stage</h3><p>Eight groups of four. Everyone plays everyone once. Win 1, draw ½. The top two go through.</p></div>
+            <div class="players" data-dots="32" data-keep="32"></div>
+          </article>
+          <article class="panel stage-card" data-left="16">
+            <div><p class="step">8 games</p><h3>Round of 16</h3><p>Group winners take white against a runner-up from the neighbouring group. One game, winner goes on.</p></div>
+            <div class="players" data-dots="32" data-keep="16"></div>
+          </article>
+          <article class="panel stage-card" data-left="8">
+            <div><p class="step">4 games</p><h3>Quarterfinals</h3><p>Eight players left. From here every result is final and every clock matters.</p></div>
+            <div class="players" data-dots="32" data-keep="8"></div>
+          </article>
+          <article class="panel stage-card" data-left="4">
+            <div><p class="step">2 games</p><h3>Semifinals</h3><p>Four players, two boards, one seat each in the final.</p></div>
+            <div class="players" data-dots="32" data-keep="4"></div>
+          </article>
+          <article class="panel stage-card final" data-left="1">
+            <i class="ph-fill ph-trophy trophy" aria-hidden="true"></i>
+            <div><p class="step">1 game</p><h3>The final</h3><p>Two players. One board. The winner is this year's champion.</p></div>
+            <div class="players" data-dots="32" data-keep="1"></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. Eight groups -->
+    <section class="cyl" id="groups">
+      <div class="cyl__head">
+        <p class="eyebrow">Group stage</p>
+        <h2 class="h2 mt-4" data-split>Eight groups. <span class="soft">Four seats each.</span></h2>
+      </div>
+      <div class="cyl__ring" data-ring></div>
+      <div class="cyl__floor" aria-hidden="true"></div>
+    </section>
+
+    <!-- 8. Play live -->
+    <section class="section" id="play">
+      <div class="wrap-x play">
+        <div>
+          <p class="eyebrow" data-reveal>The portal</p>
+          <h2 class="h2 mt-4" data-split>Play live, <span class="soft">from anywhere.</span></h2>
+          <p class="lede" data-reveal>When the countdown hits zero, the board unlocks. Every game in the tournament is played and followed right here.</p>
+          <ul class="features" data-stagger>
+            <li><i class="ph ph-shield-check"></i><div><strong>Every move checked</strong><span>The server confirms it's your turn and the move is legal before anyone sees it.</span></div></li>
+            <li><i class="ph ph-timer"></i><div><strong>Real chess clocks</strong><span>Ten minutes plus five seconds a move, identical on every screen.</span></div></li>
+            <li><i class="ph ph-handshake"></i><div><strong>Draw offers and resignations</strong><span>Everything a real board has, including pawn promotion.</span></div></li>
+            <li><i class="ph ph-chats-circle"></i><div><strong>Live commentary</strong><span>Commentators post beside the board as the game unfolds.</span></div></li>
+          </ul>
+        </div>
+        <div class="demo" data-reveal>
+          <div class="player-bar"><div class="who"><span class="colour-dot black"></span>Duke Karl &amp; Count Isouard</div><span class="clock" data-demo-clock="black">10:00</span></div>
+          <div class="board-frame"><div class="board" data-demo-board></div></div>
+          <div class="player-bar"><div class="who"><span class="colour-dot white"></span>Paul Morphy</div><span class="clock" data-demo-clock="white">10:00</span></div>
+          <p class="caption">Replay · The Opera Game, Paris 1858</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. Roles -->
+    <section class="deck" id="roles">
+      <div class="deck__inner">
+        <div>
+          <p class="eyebrow">Who it's for</p>
+          <h2 class="h2 mt-4" data-split>One portal. <span class="soft">Four roles.</span></h2>
+          <ol class="deck__list">
+            <li class="is-active"><span>01</span>Players</li>
+            <li><span>02</span>Moderators</li>
+            <li><span>03</span>Commentators</li>
+            <li><span>04</span>Admins</li>
+          </ol>
+        </div>
+        <div class="deck__stack">
+          <article class="deck__card"><div class="ico"><i class="ph ph-user"></i></div><h3>Players</h3><p>Your group, your next opponent and a live countdown to the moment your board unlocks.</p><ul><li>Next game</li><li>Countdown</li><li>Play on the board</li><li>Your rating</li></ul></article>
+          <article class="deck__card"><div class="ico"><i class="ph ph-sliders-horizontal"></i></div><h3>Moderators</h3><p>Run match day: draw the groups, schedule every round, record results and settle tiebreaks.</p><ul><li>Seeded draw</li><li>Scheduling</li><li>Results</li><li>Tiebreaks</li></ul></article>
+          <article class="deck__card"><div class="ico"><i class="ph ph-microphone"></i></div><h3>Commentators</h3><p>Watch every live board at once and post commentary right beside the game.</p><ul><li>All live boards</li><li>Move lists</li><li>Live commentary</li></ul></article>
+          <article class="deck__card"><div class="ico"><i class="ph ph-crown-simple"></i></div><h3>Admins</h3><p>Everything moderators can do, plus creating each year's edition and every account.</p><ul><li>Editions</li><li>Accounts</li><li>Bracket</li><li>Everything else</li></ul></article>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10. Ratings -->
+    <section class="section" id="ratings">
+      <div class="wrap-x">
+        <p class="eyebrow" data-reveal>Ratings</p>
+        <h2 class="h2 mt-4" data-split>Every game <span class="soft">moves the needle.</span></h2>
+        <p class="lede" data-reveal>Ratings use the Elo system. Beat a stronger player and you climb further; lose to a lower-rated one and it costs more. The leaderboard updates the moment a game ends.</p>
+        <div class="rating-grid" data-stagger>
+          <div class="panel rcard"><p class="xs dim">Example · winner</p><p class="who mt-2">White, 1200</p><p class="num-big chrome-text" data-count="1216">1216</p><p class="delta">+16 after the win</p></div>
+          <div class="panel rcard"><p class="xs dim">Example · loser</p><p class="who mt-2">Black, 1200</p><p class="num-big" data-count="1184">1184</p><p class="delta down">-16 after the loss</p></div>
+          <div class="panel rchart">
+            <p class="xs dim">Example · a rating across a tournament</p>
+            <svg viewBox="0 0 400 140" aria-hidden="true">
+              <defs><linearGradient id="areaFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgb(228 231 236 / .22)"/><stop offset="1" stop-color="rgb(228 231 236 / 0)"/></linearGradient></defs>
+              <line class="grid-line" x1="0" y1="35" x2="400" y2="35"/><line class="grid-line" x1="0" y1="70" x2="400" y2="70"/><line class="grid-line" x1="0" y1="105" x2="400" y2="105"/>
+              <path class="area" d="M0 110 L60 94 L120 100 L180 72 L240 60 L300 66 L360 34 L400 22 L400 140 L0 140 Z"/>
+              <path class="line" data-draw d="M0 110 L60 94 L120 100 L180 72 L240 60 L300 66 L360 34 L400 22"/>
+              <circle class="dot" cx="400" cy="22" r="4"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11. FAQ -->
+    <section class="section" id="faq" style="padding-top:0">
+      <div class="wrap-x faq">
+        <div>
+          <p class="eyebrow" data-reveal>Questions</p>
+          <h2 class="h2 mt-4" data-split>Before <span class="soft">you play.</span></h2>
+        </div>
+        <div data-stagger>
+          <details><summary>Who can take part?<i class="ph ph-plus"></i></summary><p class="answer">The 32 players invited to this year's edition. The tournament admin creates every account, so there's no public sign-up.</p></details>
+          <details><summary>How do I sign in?<i class="ph ph-plus"></i></summary><p class="answer">With the email and password your tournament admin gives you. Players, moderators, commentators and admins all use the same sign-in page.</p></details>
+          <details><summary>What if I miss the start of my game?<i class="ph ph-plus"></i></summary><p class="answer">The board unlocks at the scheduled time and white's clock starts straight away. If a player never shows up, their clock runs out and they lose on time.</p></details>
+          <details><summary>What happens if a knockout game is drawn?<i class="ph ph-plus"></i></summary><p class="answer">Knockout games need a winner, so the moderators hold a tiebreak and record who goes through. The bracket moves them on automatically.</p></details>
+          <details><summary>How are ties in a group decided?<i class="ph ph-plus"></i></summary><p class="answer">By Sonneborn-Berger score first, then the number of wins, then the game between the tied players, then rating.</p></details>
+        </div>
+      </div>
+    </section>
+
+    <!-- 12. Final CTA -->
+    <section class="cta" aria-label="Sign in">
+      <img class="cta__img" src="assets/brand/rook.webp" alt="" aria-hidden="true" width="570" height="1600" loading="lazy" data-cta-img>
+      <div class="cta__copy">
+        <h2 class="display chrome-text" data-split>Your move.</h2>
+        <p data-reveal>Sign in to see your group, your next opponent and the countdown to your first game.</p>
+        <a class="btn btn-primary btn-lg" href="login.html" data-portal-link data-magnetic data-reveal>Enter the portal <i class="ph-bold ph-arrow-right"></i></a>
+      </div>
+    </section>
+  </main>
+
+  <!-- 13. Footer -->
+  <footer class="footer">
+    <div class="footer__cols">
+      <div>
+        <img src="assets/brand/logo.png" alt="" width="44" height="44">
+        <p class="mt-4" style="max-width:32ch">The annual Amaze Youth Chess Tournament. Think. Play. Become legendary.</p>
+      </div>
+      <div>
+        <h4>Tournament</h4>
+        <ul><li><a href="#format">Format</a></li><li><a href="#road">Road to the crown</a></li><li><a href="#groups">Groups</a></li><li><a href="#faq">FAQ</a></li></ul>
+      </div>
+      <div>
+        <h4>Portal</h4>
+        <ul><li><a href="login.html">Sign in</a></li><li><a href="fixtures.html">Fixtures</a></li><li><a href="bracket.html">Bracket</a></li><li><a href="leaderboard.html">Leaderboard</a></li></ul>
+      </div>
+    </div>
+    <div class="footer__base"><span>© <span data-year>2026</span> Amaze Youth Chess Tournament</span><span>Think. Play. Become legendary.</span></div>
+    <p class="footer__word" aria-hidden="true" data-footer-word>Amaze</p>
+  </footer>
+
+  <script type="module" src="assets/js/pages/landing.js"></script>
+</body>
+</html>

@@ -1,0 +1,187 @@
+// Shared building blocks. Pages build HTML strings with these and drop
+// them into <main id="app">. Every piece of user text goes through esc().
+
+import { ROLE_LABEL, isStaff, signOut } from "./auth.js";
+import { store, effectiveStatus, matchContext } from "./store.js";
+import { formatDate, formatTime, relative, serverNow } from "./time.js";
+import { formatPoints, groupStandings } from "./standings.js";
+
+export function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+export const icon = (name, weight = "") => `<i class="ph${weight ? "-" + weight : ""} ph-${name}" aria-hidden="true"></i>`;
+
+// ---------------------------------------------------------------- shell
+
+const LINKS = [
+  { href: "home.html", label: "Home", icon: "house", key: "home" },
+  { href: "fixtures.html", label: "Fixtures", icon: "list-bullets", key: "fixtures" },
+  { href: "groups.html", label: "Groups", icon: "squares-four", key: "groups" },
+  { href: "bracket.html", label: "Bracket", icon: "tree-structure", key: "bracket" },
+  { href: "leaderboard.html", label: "Leaderboard", icon: "chart-bar", key: "leaderboard" },
+];
+
+// Top bar (desktop) and bottom tab bar (phones), with the current page lit.
+export function mountShell(profile, active) {
+  const links = isStaff(profile.role) ? [...LINKS, { href: "admin.html", label: "Admin", icon: "wrench", key: "admin" }] : LINKS;
+  const year = store.tournament?.year ?? "";
+
+  const header = document.createElement("header");
+  header.className = "topbar";
+  header.innerHTML = `
+    <div class="topbar-inner">
+      <a href="home.html" class="brand" aria-label="Home">
+        <img src="assets/brand/logo.png" alt="" width="32" height="32">
+        <span class="brand-text"><span class="display">Amaze Youth Chess</span><span class="display-light" data-year>Tournament ${esc(year)}</span></span>
+      </a>
+      <nav class="nav" aria-label="Main">
+        ${links.map((l) => `<a href="${l.href}" class="${l.key === active ? "active" : ""}">${l.label}</a>`).join("")}
+      </nav>
+      <div class="account">
+        <div class="account-text">
+          <p class="name truncate">${esc(profile.full_name)}</p>
+          <p class="role">${ROLE_LABEL[profile.role]}</p>
+        </div>
+        <button class="btn btn-sm" data-signout>${icon("sign-out")}<span class="signout-label">Sign out</span></button>
+      </div>
+    </div>`;
+
+  const tabbar = document.createElement("nav");
+  tabbar.className = "tabbar";
+  tabbar.setAttribute("aria-label", "Main");
+  tabbar.innerHTML = links
+    .map((l) => `<a href="${l.href}" class="${l.key === active ? "active" : ""}">${icon(l.icon, l.key === active ? "fill" : "")}${l.label}</a>`)
+    .join("");
+
+  document.body.prepend(header);
+  document.body.append(tabbar);
+  document.body.classList.add("has-tabbar");
+  header.querySelector("[data-signout]").addEventListener("click", signOut);
+}
+
+// The year shows once the tournament has loaded.
+export function refreshShellYear() {
+  const el = document.querySelector("[data-year]");
+  if (el) el.textContent = `Tournament ${store.tournament?.year ?? ""}`;
+}
+
+// Page title over a giant outline copy of itself.
+export function pageHeader(title, subtitle = "", actions = "") {
+  return `<header class="page-header">
+    <span class="ghost" aria-hidden="true">${esc(title)}</span>
+    <div><h1 class="display" data-split="load">${esc(title)}</h1>${subtitle ? `<p data-reveal="load" data-delay="0.15">${subtitle}</p>` : ""}</div>
+    ${actions ? `<div class="row wrap gap-2">${actions}</div>` : ""}
+  </header>`;
+}
+
+// ---------------------------------------------------------------- small pieces
+
+export function playerHtml(id, { me = null, align = "" } = {}) {
+  const p = id ? store.profileById.get(id) : null;
+  if (!p) return `<span class="dim">To be decided</span>`;
+  return `<span class="player${id === me ? " me" : ""}${align}"><span class="pname">${esc(p.full_name)}</span><span class="rating">${p.rating}</span></span>`;
+}
+
+export const liveTag = () => `<span class="live-tag"><span class="live-dot" aria-hidden="true"></span>Live</span>`;
+
+export function resultText(m) {
+  if (!m.result) return "";
+  return m.result === "1/2-1/2" ? "½ - ½" : m.result.replace("-", " - ");
+}
+
+export function statusHtml(m) {
+  const status = effectiveStatus(m, serverNow());
+  if (status === "live") return liveTag();
+  if (status === "completed") return `<span class="num small strong">${resultText(m)}</span>`;
+  if (!m.scheduled_at) return `<span class="small dim">Not scheduled</span>`;
+  return `<span class="status"><span class="small">${formatTime(m.scheduled_at)}</span><span class="xs dim">${relative(m.scheduled_at) ?? formatDate(m.scheduled_at)}</span></span>`;
+}
+
+export function matchRowHtml(m, me = null) {
+  const ctx = esc(matchContext(m));
+  const side = (id, colour) =>
+    `<span class="side${m.winner_id && m.winner_id !== id ? " lost" : ""}"><span class="colour-dot ${colour}" aria-label="${colour}"></span>${playerHtml(id, { me })}</span>`;
+  return `<a href="match.html?id=${m.id}" class="match-row">
+    <span class="context">${ctx}${m.scheduled_at ? `<span class="mt-1" style="display:block">${formatDate(m.scheduled_at)}</span>` : ""}</span>
+    <span class="sides">${side(m.white_id, "white")}${side(m.black_id, "black")}<span class="context-mobile">${ctx}</span></span>
+    ${statusHtml(m)}
+  </a>`;
+}
+
+export function emptyState(title, body, action = "") {
+  return `<div class="panel lit empty"><h3>${esc(title)}</h3><p>${esc(body)}</p>${action ? `<div class="actions">${action}</div>` : ""}</div>`;
+}
+
+export const notice = (text, tone = "") => `<div class="notice ${tone}" role="${tone === "error" ? "alert" : "status"}">${text}</div>`;
+
+export const skeleton = (height) => `<div class="skeleton" style="height:${height}"></div>`;
+
+// ---------------------------------------------------------------- group table
+
+export function groupTableHtml(group, { me = null, compact = false } = {}) {
+  const rows = groupStandings(group.id, store.groupPlayers, store.matches, store.profileById);
+  const games = store.matches.filter((m) => m.group_id === group.id);
+  const played = games.filter((m) => m.status === "completed").length;
+  if (!rows.length) {
+    return `<section class="panel group-card"><span class="ghost ghost-letter" aria-hidden="true">${group.label}</span><div class="group-head"><h3 class="display">Group ${group.label}</h3></div><p class="small dim" style="padding:0 1.25rem 1.25rem">No players drawn into this group yet.</p></section>`;
+  }
+  const head = compact
+    ? `<th class="c" title="Played">P</th>`
+    : `<th class="c" title="Wins">W</th><th class="c" title="Draws">D</th><th class="c" title="Losses">L</th><th class="c" title="Sonneborn-Berger">SB</th>`;
+  const body = rows
+    .map((r, i) => {
+      const p = store.profileById.get(r.playerId);
+      const cells = compact
+        ? `<td class="c num muted">${r.played}</td>`
+        : `<td class="c num muted">${r.wins}</td><td class="c num muted">${r.draws}</td><td class="c num muted">${r.losses}</td><td class="c num dim">${formatPoints(r.sb)}</td>`;
+      return `<tr class="${r.playerId === me ? "me" : ""}">
+        <td style="width:3.5rem"><span class="rank${i < 2 ? " through" : ""}">${i + 1}</span></td>
+        <td style="max-width:0"><span class="truncate" style="display:block;${r.playerId === me ? "font-weight:600" : ""}">${esc(p?.full_name ?? "Unknown player")}</span><span class="num xs dim">${p?.rating ?? ""}</span></td>
+        ${cells}
+        <td class="r num strong">${formatPoints(r.points)}</td>
+      </tr>`;
+    })
+    .join("");
+  return `<section class="panel group-card">
+    <span class="ghost ghost-letter" aria-hidden="true">${group.label}</span>
+    <div class="group-head"><h3 class="display">Group ${group.label}</h3>${games.length ? `<span class="num xs dim">${played}/${games.length} played</span>` : ""}</div>
+    <table class="table group-table"><thead><tr><th>#</th><th>Player</th>${head}<th class="r">Pts</th></tr></thead><tbody>${body}</tbody></table>
+  </section>`;
+}
+
+// ---------------------------------------------------------------- modal
+
+// Opens a dialog and returns it; the body can hold forms with data-close buttons.
+export function openModal(title, bodyHtml, { wide = false } = {}) {
+  const d = document.createElement("dialog");
+  d.className = `modal${wide ? " wide" : ""}`;
+  d.innerHTML = `<div class="modal-head"><h2>${esc(title)}</h2><button class="icon-btn" data-close aria-label="Close">${icon("x")}</button></div><div class="modal-body">${bodyHtml}</div>`;
+  document.body.append(d);
+  d.addEventListener("click", (e) => {
+    if (e.target === d || e.target.closest("[data-close]")) d.close();
+  });
+  d.addEventListener("close", () => d.remove());
+  d.showModal();
+  return d;
+}
+
+export const modalOpen = () => Boolean(document.querySelector("dialog.modal[open]"));
+
+// Runs an async action with a spinner on the button, and shows any error
+// in the given element (or an alert).
+export async function withBusy(button, action, errorEl) {
+  if (errorEl) errorEl.innerHTML = "";
+  button?.classList.add("loading");
+  if (button) button.disabled = true;
+  try {
+    return await action();
+  } catch (err) {
+    if (errorEl) errorEl.innerHTML = notice(esc(err.message), "error");
+    else alert(err.message);
+    return undefined;
+  } finally {
+    button?.classList.remove("loading");
+    if (button) button.disabled = false;
+  }
+}
