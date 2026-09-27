@@ -42,15 +42,20 @@ export function groupStandings(groupId, groupPlayers, matches, profileById) {
     }
   }
 
-  const headToHead = (a, b) => {
-    const g = games.find((m) => (m.white_id === a && m.black_id === b) || (m.white_id === b && m.black_id === a));
-    if (!g) return 0;
-    const s = scoreFor(g, a);
-    return s === 1 ? -1 : s === 0 ? 1 : 0;
-  };
+  // Head-to-head: a mini-league of the games between players still level on
+  // points, Sonneborn-Berger and wins (the same rule the server uses).
+  const level = (a, b) => a.points === b.points && a.sb === b.sb && a.wins === b.wins;
+  for (const row of rows.values()) {
+    row.mini = 0;
+    for (const m of games) {
+      if (m.white_id !== row.playerId && m.black_id !== row.playerId) continue;
+      const opp = rows.get(m.white_id === row.playerId ? m.black_id : m.white_id);
+      if (opp && level(row, opp)) row.mini += scoreFor(m, row.playerId);
+    }
+  }
 
   return [...rows.values()].sort(
-    (a, b) => b.points - a.points || b.sb - a.sb || b.wins - a.wins || headToHead(a.playerId, b.playerId) || b.rating - a.rating,
+    (a, b) => b.points - a.points || b.sb - a.sb || b.wins - a.wins || b.mini - a.mini || b.rating - a.rating,
   );
 }
 

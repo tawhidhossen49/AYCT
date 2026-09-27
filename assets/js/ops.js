@@ -103,7 +103,9 @@ export async function updateMatch(id, patch) {
 
 // Puts a game back to its starting position. The database reverses any
 // rating change the game had caused.
-export function resetGame(id) {
+export async function resetGame(id) {
+  // An Armageddon game made for this one no longer applies.
+  check(await supabase.from("matches").delete().eq("tiebreak_of", id));
   return updateMatch(id, {
     status: "scheduled",
     result: null,
@@ -118,6 +120,8 @@ export function resetGame(id) {
     draw_offer_by: null,
     started_at: null,
     ended_at: null,
+    paused_at: null,
+    clocks: [],
   });
 }
 
@@ -145,34 +149,14 @@ export function qualifiers(groups, groupPlayers, matches, profileById) {
   return out;
 }
 
-export async function generateKnockout(tournamentId, groups, groupPlayers, matches, profileById) {
-  const q = qualifiers(groups, groupPlayers, matches, profileById);
-  const id = () => crypto.randomUUID();
-  const base = { tournament_id: tournamentId, status: "scheduled" };
+// The database builds the bracket from its own standings, the same way it
+// does automatically when the last group game ends.
+export async function generateKnockout(tournamentId) {
+  check(await supabase.rpc("generate_knockout", { p_tournament: tournamentId }));
+}
 
-  const final = { ...base, id: id(), stage: "final", bracket_slot: 1 };
-  const sf = [1, 2].map((slot) => ({ ...base, id: id(), stage: "sf", bracket_slot: slot, next_match_id: final.id, next_color: slot % 2 ? "white" : "black" }));
-  const qf = [1, 2, 3, 4].map((slot) => ({
-    ...base,
-    id: id(),
-    stage: "qf",
-    bracket_slot: slot,
-    next_match_id: sf[Math.ceil(slot / 2) - 1].id,
-    next_color: slot % 2 ? "white" : "black",
-  }));
-  const r16 = R16_PAIRINGS.map(([ga, pa, gb, pb], i) => ({
-    ...base,
-    id: id(),
-    stage: "r16",
-    bracket_slot: i + 1,
-    next_match_id: qf[Math.floor(i / 2)].id,
-    next_color: i % 2 === 0 ? "white" : "black",
-    white_id: q.get(ga)?.[pa - 1] ?? null,
-    black_id: q.get(gb)?.[pb - 1] ?? null,
-  }));
-
-  check(await supabase.from("matches").delete().eq("tournament_id", tournamentId).in("stage", ["r16", "qf", "sf", "final"]));
-  // Later rounds first, so every next_match_id already exists.
-  check(await supabase.from("matches").insert([final, ...sf, ...qf, ...r16]));
-  check(await supabase.from("tournaments").update({ status: "knockout" }).eq("id", tournamentId));
+// A message from the arbiter to one or more people's updates feed.
+export async function sendMessage(userIds, title, body, link = null) {
+  const rows = userIds.map((user_id) => ({ user_id, kind: "message", title, body, link }));
+  if (rows.length) check(await supabase.from("notifications").insert(rows));
 }

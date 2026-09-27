@@ -1,12 +1,18 @@
 // Every change to a live game goes through here, so moves, clocks and
 // results are decided by the server rather than trusted from the browser.
+// Rules follow the FIDE Online Chess Regulations.
 //
 // POST { action, match_id, ...args }
-//   move        { from, to, promotion? }   side to move only
+//   move        { from, to, promotion?, think_ms? }  side to move only
 //   resign                                  either player
 //   offer_draw / accept_draw / decline_draw either player
 //   flag                                    anyone watching; ends the game if
 //                                           the side to move is out of time
+//   Arbiter (admins and moderators):
+//   pause / resume
+//   add_time    { color: "white"|"black", seconds }
+//   takeback                                undoes the last move
+//   adjudicate  { result, reason? }
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Chess } from "npm:chess.js@1.4.0";
@@ -19,6 +25,10 @@ const cors = {
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
+// Network lag the server forgives on each move: the player is charged the
+// time they report thinking, but never less than the server saw minus this.
+const MAX_LAG_MS = 500;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -59,25 +69,27 @@ Deno.serve(async (req) => {
 
   const { data: tournament } = await admin
     .from("tournaments")
-    .select("time_control_minutes, increment_seconds")
+    .select("time_control_minutes, increment_seconds, draw_offer_min_moves")
     .eq("id", match.tournament_id)
     .single();
-  const baseMs = (tournament?.time_control_minutes ?? 10) * 60_000;
-  const incMs = (tournament?.increment_seconds ?? 0) * 1000;
+  const tcMs = (tournament?.time_control_minutes ?? 10) * 60_000;
+  const whiteBase = match.white_base_ms ?? tcMs;
+  const blackBase = match.black_base_ms ?? tcMs;
+  const incMs = match.increment_ms ?? (tournament?.increment_seconds ?? 0) * 1000;
 
   // A scheduled game goes live at its start time. White's clock runs from
   // then, so a player who doesn't show up loses on time.
   const patch = {};
   if (match.status === "scheduled") {
     match.status = "live";
-    match.white_ms = baseMs;
-    match.black_ms = baseMs;
+    match.white_ms = whiteBase;
+    match.black_ms = blackBase;
     match.clock_started_at = match.scheduled_at;
     Object.assign(patch, {
       status: "live",
       started_at: match.scheduled_at,
-      white_ms: baseMs,
-      black_ms: baseMs,
+      white_ms: whiteBase,
+      black_ms: blackBase,
       clock_started_at: match.scheduled_at,
     });
   }
@@ -85,11 +97,15 @@ Deno.serve(async (req) => {
   const chess = new Chess();
   if (match.pgn) chess.loadPgn(match.pgn);
   const turn = chess.turn(); // 'w' | 'b'
+  const moverKey = turn === "w" ? "white_ms" : "black_ms";
   const toMoveId = turn === "w" ? match.white_id : match.black_id;
-  const elapsed = now - new Date(match.clock_started_at).getTime();
-  const leftForMover = (turn === "w" ? match.white_ms : match.black_ms) - elapsed;
+  const paused = !!match.paused_at;
+  const elapsed = paused ? 0 : now - new Date(match.clock_started_at).getTime();
+  const leftForMover = match[moverKey] - elapsed;
   const isPlayer = uid === match.white_id || uid === match.black_id;
   const opponentOf = (id) => (id === match.white_id ? match.black_id : match.white_id);
+  const events = [];
+  const log = (kind, detail = null) => events.push({ match_id: match.id, user_id: uid, kind, detail });
 
   const finish = (result, reason) =>
     Object.assign(patch, {
@@ -98,7 +114,15 @@ Deno.serve(async (req) => {
       end_reason: reason,
       ended_at: new Date(now).toISOString(),
       draw_offer_by: null,
+      paused_at: null,
     });
+
+  // Stops the running clock at its current reading, so later changes start
+  // from an exact figure.
+  const settleClock = () => {
+    patch[moverKey] = Math.max(0, Math.round(leftForMover));
+    patch.clock_started_at = new Date(now).toISOString();
+  };
 
   const timeoutResult = () => {
     // Out of time loses, unless the opponent can't possibly mate: a bare
@@ -109,17 +133,28 @@ Deno.serve(async (req) => {
       .flat()
       .filter((sq) => sq && sq.color === opp && sq.type !== "k");
     const cannotMate = oppPieces.length === 0 || (oppPieces.length === 1 && ["b", "n"].includes(oppPieces[0].type));
+    patch[moverKey] = 0;
     if (cannotMate) return finish("1/2-1/2", "timeout vs insufficient material");
     finish(turn === "w" ? "0-1" : "1-0", "timeout");
   };
 
+  const staffOnly = () => (isStaff ? null : json({ error: "Only the arbiter can do that" }, 403));
+
   switch (body.action) {
     case "move": {
       if (uid !== toMoveId) return json({ error: "It's not your move" }, 403);
-      if (leftForMover <= 0) {
+      if (paused) return json({ error: "The arbiter has paused this game" }, 409);
+
+      // Lag compensation: charge the reported thinking time, within limits.
+      let charged = elapsed;
+      const think = Number(body.think_ms);
+      if (Number.isFinite(think) && think >= 0) charged = Math.min(elapsed, Math.max(think, elapsed - MAX_LAG_MS));
+      const left = match[moverKey] - charged;
+      if (left <= 0) {
         timeoutResult();
         break;
       }
+
       let moved;
       try {
         moved = chess.move({ from: body.from, to: body.to, promotion: body.promotion || "q" });
@@ -128,15 +163,17 @@ Deno.serve(async (req) => {
       }
       if (!moved) return json({ error: "Illegal move" }, 422);
 
-      const left = leftForMover + incMs;
+      const after = Math.round(left + incMs);
       Object.assign(patch, {
         fen: chess.fen(),
         pgn: chess.pgn(),
         move_count: match.move_count + 1,
-        [turn === "w" ? "white_ms" : "black_ms"]: Math.round(left),
+        [moverKey]: after,
         [turn === "w" ? "black_ms" : "white_ms"]: turn === "w" ? match.black_ms : match.white_ms,
         clock_started_at: new Date(now).toISOString(),
-        draw_offer_by: null,
+        clocks: [...(match.clocks ?? []), after],
+        // An offer stands until the opponent answers it; moving is a "no".
+        draw_offer_by: match.draw_offer_by === uid ? uid : null,
       });
 
       if (chess.isCheckmate()) finish(turn === "w" ? "1-0" : "0-1", "checkmate");
@@ -150,12 +187,24 @@ Deno.serve(async (req) => {
     case "resign": {
       if (!isPlayer) return json({ error: "Only the players can resign" }, 403);
       finish(uid === match.white_id ? "0-1" : "1-0", "resignation");
+      log("resign");
       break;
     }
 
     case "offer_draw": {
       if (!isPlayer) return json({ error: "Only the players can offer a draw" }, 403);
-      patch.draw_offer_by = uid;
+      const minMoves = tournament?.draw_offer_min_moves ?? 0;
+      if (Math.floor(match.move_count / 2) < minMoves) {
+        return json({ error: `Draw offers are allowed after move ${minMoves}` }, 409);
+      }
+      if (match.draw_offer_by === opponentOf(uid)) {
+        // Both want a draw: that's an agreement.
+        finish("1/2-1/2", "agreement");
+        log("draw_agreed");
+      } else {
+        patch.draw_offer_by = uid;
+        log("draw_offered");
+      }
       break;
     }
 
@@ -163,19 +212,89 @@ Deno.serve(async (req) => {
       if (!isPlayer) return json({ error: "Only the players can accept a draw" }, 403);
       if (match.draw_offer_by !== opponentOf(uid)) return json({ error: "There's no draw offer to accept" }, 409);
       finish("1/2-1/2", "agreement");
+      log("draw_agreed");
       break;
     }
 
     case "decline_draw": {
       if (!isPlayer) return json({ error: "Only the players can decline a draw" }, 403);
       patch.draw_offer_by = null;
+      log("draw_declined");
       break;
     }
 
     case "flag": {
       if (!isPlayer && !isStaff) return json({ error: "Not allowed" }, 403);
-      if (leftForMover > 0) return json({ error: "There's still time on the clock" }, 409);
+      if (paused || leftForMover > 0) return json({ error: "There's still time on the clock" }, 409);
       timeoutResult();
+      break;
+    }
+
+    case "pause": {
+      const denied = staffOnly();
+      if (denied) return denied;
+      if (paused) return json({ error: "Already paused" }, 409);
+      if (leftForMover <= 0) {
+        timeoutResult();
+        break;
+      }
+      settleClock();
+      patch.paused_at = new Date(now).toISOString();
+      log("paused");
+      break;
+    }
+
+    case "resume": {
+      const denied = staffOnly();
+      if (denied) return denied;
+      if (!paused) return json({ error: "The game isn't paused" }, 409);
+      patch.paused_at = null;
+      patch.clock_started_at = new Date(now).toISOString();
+      log("resumed");
+      break;
+    }
+
+    case "add_time": {
+      const denied = staffOnly();
+      if (denied) return denied;
+      const seconds = Math.round(Number(body.seconds));
+      if (!["white", "black"].includes(body.color) || !Number.isFinite(seconds) || seconds === 0 || Math.abs(seconds) > 3600) {
+        return json({ error: "Give a colour and a number of seconds" }, 400);
+      }
+      if (!paused) settleClock();
+      const key = body.color === "white" ? "white_ms" : "black_ms";
+      const current = patch[key] ?? match[key];
+      patch[key] = Math.max(1000, current + seconds * 1000);
+      log("time_added", { color: body.color, seconds });
+      break;
+    }
+
+    case "takeback": {
+      const denied = staffOnly();
+      if (denied) return denied;
+      if (match.move_count === 0) return json({ error: "No moves to take back" }, 409);
+      const undone = chess.undo();
+      Object.assign(patch, {
+        fen: chess.fen(),
+        pgn: chess.pgn(),
+        move_count: match.move_count - 1,
+        clocks: (match.clocks ?? []).slice(0, -1),
+        draw_offer_by: null,
+        clock_started_at: new Date(now).toISOString(),
+        // The waiting side's clock stops where it is.
+        [moverKey]: Math.max(1000, Math.round(leftForMover)),
+      });
+      log("takeback", { san: undone?.san });
+      break;
+    }
+
+    case "adjudicate": {
+      const denied = staffOnly();
+      if (denied) return denied;
+      if (!["1-0", "0-1", "1/2-1/2"].includes(body.result)) return json({ error: "Pick a result" }, 400);
+      if (!paused) settleClock();
+      finish(body.result, String(body.reason || "arbiter decision").slice(0, 80));
+      log("adjudicated", { result: body.result });
       break;
     }
 
@@ -195,5 +314,9 @@ Deno.serve(async (req) => {
 
   if (saveError) return json({ error: saveError.message }, 500);
   if (!saved) return json({ error: "The board changed, please try again" }, 409);
+
+  if (saved.status === "completed") log("game_over", { result: saved.result, reason: saved.end_reason });
+  if (events.length) await admin.from("game_events").insert(events);
+
   return json({ match: saved, server_now: new Date().toISOString() });
 });

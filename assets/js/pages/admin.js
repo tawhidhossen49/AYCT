@@ -1,25 +1,31 @@
-// Admin panel: editions, accounts, the group draw, fixtures and results,
-// and the knockout bracket. Moderators get everything except accounts.
+// The Control Room: the organisers' side of the portal. Live boards with
+// arbiter tools, editions and autopilot, accounts, the group draw, fixtures
+// and results, the knockout bracket, and the activity log. Moderators get
+// everything except accounts.
 
 import { ROLE_LABEL } from "../auth.js";
-import { callFunction } from "../supabase.js";
-import { store, loadAll, loadEmails, subscribe, sortByTime, STAGE_LABEL } from "../store.js";
-import { formatDateTime, fromLocalInput, toLocalInput } from "../time.js";
+import { callFunction, supabase } from "../supabase.js";
+import { store, loadAll, loadEmails, subscribe, sortByTime, STAGE_LABEL, effectiveStatus, matchContext, baseClocks, bracketGames } from "../store.js";
+import { formatClock, formatDateTime, formatTime, fromLocalInput, serverNow, toLocalInput } from "../time.js";
 import { TIEBREAK_NOTE } from "../standings.js";
 import {
   clearGroups, createTournament, generateGroupFixtures, generateKnockout, qualifiers, R16_PAIRINGS,
-  resetGame, scheduleRound, seededDraw, setActiveTournament, setGroupSlot, updateMatch, updateTournament,
+  resetGame, scheduleRound, seededDraw, sendMessage, setActiveTournament, setGroupSlot, updateMatch, updateTournament,
 } from "../ops.js";
-import { emptyState, esc, icon, modalOpen, notice, openModal, playerHtml, statusHtml, withBusy } from "../ui.js";
+import { emptyState, esc, icon, liveTag, modalOpen, notice, openModal, playerHtml, statusHtml, withBusy } from "../ui.js";
+import { mountMiniBoards } from "../board.js";
+import { KIND_ICON, timeAgo } from "../notify.js";
 import { startPage } from "../page.js";
 import { animateIn } from "../motion.js";
 
 const TABS = [
+  { id: "live", label: "Live" },
   { id: "tournament", label: "Tournament" },
   { id: "people", label: "People" },
   { id: "groups", label: "Groups" },
   { id: "matches", label: "Matches" },
   { id: "knockout", label: "Knockout" },
+  { id: "activity", label: "Activity" },
 ];
 const ROLES = ["player", "moderator", "commentator", "admin"];
 const STATUS_LABEL = { setup: "Setting up", groups: "Group stage", knockout: "Knockout stage", complete: "Complete" };
@@ -33,28 +39,49 @@ const ROUNDS = [
   { key: "final", label: STAGE_LABEL.final, test: (m) => m.stage === "final" },
 ];
 
-// View state that survives redraws.
+// View state that survives redraws, plus what the Live and Activity tabs
+// watch: who is in which game room, and the fair-play log.
 const ui = { roleFilter: "all", query: "", round: "g1" };
+const watch = { presence: new Map(), goneSince: new Map(), events: [], notes: [], loaded: false };
+// How the fair-play log reads.
+const EVENT_TEXT = {
+  joined: "opened the game room",
+  tab_hidden: "left the game tab",
+  tab_visible: "came back to the game tab",
+  resign: "resigned",
+  draw_offered: "offered a draw",
+  draw_declined: "declined a draw",
+  draw_agreed: "agreed a draw",
+  paused: "paused the game",
+  resumed: "resumed the game",
+  time_added: "adjusted a clock",
+  takeback: "took back a move",
+  adjudicated: "adjudicated the game",
+  game_over: "Game over",
+};
+
 
 const { profile, app, redrawHero } = await startPage("admin", { staff: true, hero });
 
 // Header band: compact, with the numbers that matter to organisers.
 function hero(p) {
-  const games = store.matches;
+  const games = bracketGames(store.matches);
+  const now = serverNow();
+  const live = store.matches.filter((m) => effectiveStatus(m, now) === "live").length;
   return {
     scene: "path",
     compact: true,
-    eyebrow: p.role === "admin" ? "Admin" : "Moderator",
+    eyebrow: `Control room · ${p.role === "admin" ? "Admin" : "Moderator"}`,
     bold: "Run the",
     soft: "tournament.",
     lede:
       p.role === "admin"
-        ? "Accounts, the draw, fixtures, results and the bracket, all from here."
-        : "The draw, fixtures, results and the bracket. Accounts are managed by admins.",
+        ? "Live boards and arbiter tools, accounts, the draw, fixtures, results and the bracket. Switch to Portal to see what players see."
+        : "Live boards and arbiter tools, the draw, fixtures, results and the bracket. Accounts are managed by admins.",
     stats: [
+      { value: live, label: "Live now", live: live > 0 },
       { value: store.profiles.filter((x) => x.role === "player").length, label: "Players" },
-      { value: store.groupPlayers.length, label: "Drawn" },
-      { value: games.filter((m) => m.scheduled_at).length, label: `of ${games.length} scheduled` },
+      { value: games.filter((m) => m.status === "completed").length, label: `of ${games.length} played` },
     ],
   };
 }
@@ -62,14 +89,15 @@ const isAdmin = profile.role === "admin";
 
 function currentTab() {
   const id = location.hash.slice(1);
-  return TABS.some((t) => t.id === id) ? id : store.tournament ? "matches" : "tournament";
+  return TABS.some((t) => t.id === id) ? id : store.tournament ? "live" : "tournament";
 }
 
 function draw() {
   const tab = currentTab();
   const tabs = `<nav class="tabs" aria-label="Admin sections">${TABS.map((t) => `<a class="tab${t.id === tab ? " active" : ""}" href="#${t.id}">${t.label}</a>`).join("")}</nav>`;
-  const body = { tournament: tournamentTab, people: peopleTab, groups: groupsTab, matches: matchesTab, knockout: knockoutTab }[tab]();
+  const body = { live: liveTab, tournament: tournamentTab, people: peopleTab, groups: groupsTab, matches: matchesTab, knockout: knockoutTab, activity: activityTab }[tab]();
   app.innerHTML = tabs + (store.error ? notice(esc(store.error), "error") : "") + body;
+  if (tab === "live") mountMiniBoards(app);
 }
 
 async function refresh() {
@@ -84,10 +112,222 @@ draw();
 animateIn(app);
 window.addEventListener("hashchange", draw);
 // Live updates, unless someone is in the middle of typing or a dialog.
-subscribe(() => {
+function calmDraw() {
   const typing = app.contains(document.activeElement) && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
   if (!modalOpen() && !typing) draw();
-});
+}
+subscribe(calmDraw);
+startWatching();
+// Clocks on the Live tab tick every second; the tab redraws every 15.
+setInterval(tickLiveClocks, 1000);
+setInterval(() => {
+  redrawHero();
+  if (currentTab() === "live") calmDraw();
+}, 15_000);
+
+// ---------------------------------------------------------------- live watch: presence and the fair-play log
+
+async function startWatching() {
+  const [ev, notes] = await Promise.all([
+    supabase.from("game_events").select("*").order("created_at", { ascending: false }).limit(150),
+    supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(60),
+  ]);
+  watch.events = ev.data ?? [];
+  watch.notes = notes.data ?? [];
+  watch.loaded = true;
+
+  // The Arena pages announce who is in which game room.
+  const ch = supabase.channel("arena-presence");
+  ch.on("presence", { event: "sync" }, () => {
+    const map = new Map();
+    for (const metas of Object.values(ch.presenceState())) {
+      for (const meta of metas) {
+        if (!meta.match_id) continue;
+        const key = `${meta.user_id}:${meta.match_id}`;
+        map.set(key, { visible: Boolean(map.get(key)?.visible || meta.visible) });
+      }
+    }
+    watch.presence = map;
+    if (currentTab() === "live") calmDraw();
+  });
+  ch.subscribe();
+
+  supabase
+    .channel("control-log")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "game_events" }, (p) => {
+      watch.events.unshift(p.new);
+      if (["live", "activity"].includes(currentTab())) calmDraw();
+    })
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" }, (p) => {
+      watch.notes.unshift(p.new);
+      if (currentTab() === "activity") calmDraw();
+    })
+    .subscribe();
+  if (["live", "activity"].includes(currentTab())) calmDraw();
+}
+
+// "on" (in the game room), "away" (tab hidden) or "off", for a player in a game.
+function presenceOf(userId, matchId) {
+  const key = `${userId}:${matchId}`;
+  const p = watch.presence.get(key);
+  if (p) {
+    watch.goneSince.delete(key);
+    return p.visible ? "on" : "away";
+  }
+  if (!watch.goneSince.has(key)) watch.goneSince.set(key, Date.now());
+  return "off";
+}
+
+// Not in the game room for over a minute while their game is live.
+function offline(userId, matchId) {
+  const gone = watch.goneSince.get(`${userId}:${matchId}`);
+  return presenceOf(userId, matchId) === "off" && gone && Date.now() - gone > 60_000;
+}
+
+function liveClocks(m) {
+  const base = baseClocks(m);
+  const now = serverNow();
+  if (m.status === "scheduled") return { white: base.white - Math.max(0, now - new Date(m.scheduled_at).getTime()), black: base.black, turn: "white" };
+  const turn = (m.fen.split(" ")[1] ?? "w") === "w" ? "white" : "black";
+  const w = m.white_ms ?? base.white;
+  const b = m.black_ms ?? base.black;
+  if (m.paused_at || !m.clock_started_at || m.status === "completed") return { white: w, black: b, turn };
+  const el = now - new Date(m.clock_started_at).getTime();
+  return turn === "white" ? { white: w - el, black: b, turn } : { white: w, black: b - el, turn };
+}
+
+function tickLiveClocks() {
+  if (currentTab() !== "live") return;
+  app.querySelectorAll("[data-live-clock]").forEach((el) => {
+    const m = store.matches.find((x) => x.id === el.dataset.liveClock);
+    if (!m) return;
+    const c = liveClocks(m)[el.dataset.colour];
+    el.textContent = formatClock(c);
+    el.classList.toggle("low", c < 30_000);
+  });
+}
+
+// ---------------------------------------------------------------- live tab
+
+function liveTab() {
+  if (!store.tournament) return emptyState("No edition yet", "Create the tournament first.");
+  const now = serverNow();
+  const live = store.matches.filter((m) => effectiveStatus(m, now) === "live").sort(sortByTime);
+  const soon = store.matches
+    .filter((m) => m.status === "scheduled" && m.scheduled_at && new Date(m.scheduled_at).getTime() > now && new Date(m.scheduled_at).getTime() - now < 3 * 3600_000)
+    .sort(sortByTime);
+  const recent = store.matches
+    .filter((m) => m.status === "completed" && m.ended_at && now - new Date(m.ended_at).getTime() < 6 * 3600_000)
+    .sort((a, b) => new Date(b.ended_at) - new Date(a.ended_at))
+    .slice(0, 8);
+  const first = (id) => esc(store.profileById.get(id)?.full_name.split(" ")[0] ?? "?");
+
+  const who = (m, colour) => {
+    const id = colour === "white" ? m.white_id : m.black_id;
+    const pres = presenceOf(id, m.id);
+    const c = liveClocks(m);
+    const turn = c.turn === colour && !m.paused_at;
+    return `<div class="ctl-player${turn ? " turn" : ""}">
+      <span class="presence ${pres}" title="${pres === "on" ? "In the game room" : pres === "away" ? "Tab hidden" : "Not in the game room"}"></span>
+      <span class="grow truncate">${esc(store.profileById.get(id)?.full_name ?? "?")}</span>
+      <span class="ctl-clock num${c[colour] < 30_000 ? " low" : ""}" data-live-clock="${m.id}" data-colour="${colour}">${formatClock(c[colour])}</span>
+    </div>`;
+  };
+
+  const alertsFor = (m) => {
+    const hidden = watch.events.filter((e) => e.match_id === m.id && e.kind === "tab_hidden").length;
+    const out = [];
+    if (m.paused_at) out.push(`<span class="ctl-alert">${icon("pause", "bold")} Paused</span>`);
+    if (m.draw_offer_by) out.push(`<span class="ctl-alert soft">${icon("handshake", "bold")} Draw offered</span>`);
+    if (hidden) out.push(`<span class="ctl-alert">${icon("eye-slash", "bold")} ${hidden} tab switch${hidden === 1 ? "" : "es"}</span>`);
+    for (const id of [m.white_id, m.black_id]) {
+      if (offline(id, m.id)) out.push(`<span class="ctl-alert">${icon("wifi-slash", "bold")} ${first(id)} offline</span>`);
+    }
+    return out.join("");
+  };
+
+  const card = (m) => `<article class="panel ctl-card">
+    <div class="ctl-head"><span class="xs dim truncate">${esc(matchContext(m))}</span><span class="row gap-2">${liveTag()}<span class="num xs dim">Move ${Math.ceil(m.move_count / 2) || 1}</span></span></div>
+    ${who(m, "black")}
+    <a class="mini-board ctl-board" href="play.html?id=${m.id}" data-mini-fen="${esc(m.fen)}" aria-label="Open ${first(m.white_id)} against ${first(m.black_id)}"></a>
+    ${who(m, "white")}
+    <div class="ctl-alerts">${alertsFor(m)}</div>
+    <div class="ctl-actions">
+      <a class="btn btn-sm btn-primary" href="play.html?id=${m.id}">${icon("gavel", "bold")} Arbiter view</a>
+      <button class="icon-btn" data-game="${m.paused_at ? "resume" : "pause"}" data-id="${m.id}" aria-label="${m.paused_at ? "Resume" : "Pause"} this game" title="${m.paused_at ? "Resume" : "Pause"}">${icon(m.paused_at ? "play" : "pause", "bold")}</button>
+      <button class="icon-btn" data-game="add_time" data-id="${m.id}" data-color="white" aria-label="Add 30 seconds for White" title="+30 s for White">+W</button>
+      <button class="icon-btn" data-game="add_time" data-id="${m.id}" data-color="black" aria-label="Add 30 seconds for Black" title="+30 s for Black">+B</button>
+    </div>
+  </article>`;
+
+  const soonRow = (m) => `<a href="play.html?id=${m.id}" class="admin-row">
+    <div class="grow"><span class="xs dim" style="display:block;margin-bottom:0.25rem">${esc(matchContext(m))}, ${formatTime(m.scheduled_at)}</span>
+      <span class="vs">${playerHtml(m.white_id)}<span class="xs dim">vs</span>${playerHtml(m.black_id)}</span></div>
+    <span class="row gap-2 xs dim">${[m.white_id, m.black_id].map((id) => `<span class="presence ${presenceOf(id, m.id)}" style="position:static;border:0"></span>`).join("")}<span class="hide-sm">in the room</span></span>
+    ${statusHtml(m)}
+  </a>`;
+
+  const t = store.tournament;
+  return `<div class="stack gap-8">
+    <div class="ctl-auto">
+      <span class="strong">${icon("robot", "bold")} Autopilot</span>
+      <span class="${t.auto_tiebreak ? "on" : ""}">Armageddon tiebreaks ${t.auto_tiebreak ? "on" : "off"}</span>
+      <span class="${t.auto_knockout ? "on" : ""}">Bracket after groups ${t.auto_knockout ? "on" : "off"}</span>
+      <span class="on">Timeouts and no-shows</span>
+      <span class="on">Reminders 10 min before</span>
+      <a href="#tournament" class="ml-auto small">Settings ${icon("arrow-right")}</a>
+    </div>
+    <div data-err></div>
+    <section>
+      <h2 class="section-title mb-3">Live boards <span class="dim num">${live.length}</span></h2>
+      ${live.length ? `<div class="grid sm-2 lg-3 xl-4 tight">${live.map(card).join("")}</div>` : `<div class="panel pad muted">No games are being played right now.</div>`}
+    </section>
+    <section>
+      <h2 class="section-title mb-3">Starting in the next 3 hours</h2>
+      ${soon.length ? `<div class="panel pad-sm">${soon.map(soonRow).join("")}</div>` : `<div class="panel pad muted">Nothing starting soon.</div>`}
+    </section>
+    ${recent.length
+      ? `<section><h2 class="section-title mb-3">Just finished</h2><div class="panel pad-sm">${recent
+          .map((m) => `<a href="play.html?id=${m.id}" class="admin-row"><div class="grow"><span class="xs dim" style="display:block;margin-bottom:0.25rem">${esc(matchContext(m))}${m.end_reason ? ` · ${esc(m.end_reason)}` : ""}</span><span class="vs">${playerHtml(m.white_id)}<span class="xs dim">vs</span>${playerHtml(m.black_id)}</span></div>${statusHtml(m)}<span></span></a>`)
+          .join("")}</div></section>`
+      : ""}
+  </div>`;
+}
+
+// ---------------------------------------------------------------- activity tab
+
+
+function activityTab() {
+  if (!watch.loaded) return `<div class="skeleton" style="height:20rem"></div>`;
+  const name = (id) => esc(store.profileById.get(id)?.full_name ?? "Someone");
+  const gameLabel = (id) => {
+    const m = store.matches.find((x) => x.id === id);
+    if (!m) return "A game";
+    const f = (pid) => esc(store.profileById.get(pid)?.full_name.split(" ")[0] ?? "?");
+    return `${f(m.white_id)} v ${f(m.black_id)} · ${esc(matchContext(m))}`;
+  };
+  const events = watch.events
+    .slice(0, 80)
+    .map((e) => {
+      let text = EVENT_TEXT[e.kind] ?? e.kind;
+      if (e.kind === "time_added") text = `gave ${e.detail?.color} ${e.detail?.seconds > 0 ? "+" : ""}${e.detail?.seconds} s`;
+      if (e.kind === "takeback") text = `took back ${e.detail?.san ?? "a move"}`;
+      if (e.kind === "tab_visible" && e.detail?.away_ms) text += ` after ${Math.round(e.detail.away_ms / 1000)} s`;
+      if (e.kind === "game_over") text = `Game over: ${e.detail?.result ?? ""}${e.detail?.reason ? ` (${e.detail.reason})` : ""}`;
+      const warn = e.kind === "tab_hidden";
+      return `<a class="feed-item" href="play.html?id=${e.match_id}"><span class="feed-icon"${warn ? ' style="color:#f5b94a"' : ""}>${icon(warn ? "eye-slash" : e.kind === "game_over" ? "flag-checkered" : "pulse", "bold")}</span>
+        <span class="grow"><span class="feed-title">${e.kind === "game_over" ? "" : `${name(e.user_id)} `}${esc(text)}</span><span class="feed-body">${gameLabel(e.match_id)}</span><span class="feed-time">${timeAgo(e.created_at)}</span></span></a>`;
+    })
+    .join("");
+  const notes = watch.notes
+    .slice(0, 40)
+    .map((n) => `<div class="feed-item"><span class="feed-icon">${icon(KIND_ICON[n.kind] ?? "bell", "bold")}</span><span class="grow"><span class="feed-title">${esc(n.title)}</span><span class="feed-body">To ${name(n.user_id)}${n.body ? `: ${esc(n.body)}` : ""}</span><span class="feed-time">${timeAgo(n.created_at)}</span></span></div>`)
+    .join("");
+  return `<div class="grid lg-hero">
+    <section class="panel pad-sm feed-panel"><h2 class="eyebrow" style="padding:0.85rem 1rem 0.35rem">Game rooms and fair play</h2>${events || `<p class="small dim" style="padding:0.5rem 1rem 1rem">Nothing logged yet.</p>`}</section>
+    <section class="panel pad-sm feed-panel"><h2 class="eyebrow" style="padding:0.85rem 1rem 0.35rem">Updates sent to players</h2>${notes || `<p class="small dim" style="padding:0.5rem 1rem 1rem">No updates sent yet.</p>`}</section>
+  </div>`;
+}
 
 // ---------------------------------------------------------------- tournament tab
 
@@ -118,7 +358,24 @@ function tournamentTab() {
         <p class="small dim mt-2">Everyone sees the active edition. Earlier years stay here as a record.</p>
       </section>`
     : "";
-  return `<div class="stack gap-8">${form}${list}</div>`;
+  const autopilot = t
+    ? `<form class="panel pad form-grid md-2" data-form="autopilot">
+        <div class="span-2"><h2 class="section-title">${icon("robot", "bold")} Autopilot</h2><p class="small muted mt-1">What the tournament does by itself. Timeouts, no-shows, ratings, standings, advancement and reminders always run.</p></div>
+        <label class="row gap-3 span-2" style="cursor:pointer"><input type="checkbox" name="auto_tiebreak" ${t.auto_tiebreak ? "checked" : ""} style="width:1.1rem;height:1.1rem;flex-shrink:0;accent-color:#d9dce2"><span><span class="strong small" style="display:block">Armageddon tiebreaks</span><span class="hint">When a knockout game is drawn, create an Armageddon game with colours reversed: White 5 min, Black 4 min, +2 s. Black goes through on a draw.</span></span></label>
+        <label class="row gap-3 span-2" style="cursor:pointer"><input type="checkbox" name="auto_knockout" ${t.auto_knockout ? "checked" : ""} style="width:1.1rem;height:1.1rem;flex-shrink:0;accent-color:#d9dce2"><span><span class="strong small" style="display:block">Build the bracket after the groups</span><span class="hint">When the last group game ends, the round of 16 is drawn from the final tables.</span></span></label>
+        <div class="field"><label for="ap-delay">Armageddon starts after (minutes)</label><input class="input" id="ap-delay" name="delay" type="number" min="1" max="1440" value="${t.tiebreak_delay_minutes}"></div>
+        <div class="field"><label for="ap-draw">Draw offers allowed from move</label><input class="input" id="ap-draw" name="draw_min" type="number" min="0" max="100" value="${t.draw_offer_min_moves}"><p class="hint">0 allows draw offers at any time.</p></div>
+        <div class="span-2 row gap-3"><button class="btn btn-primary" type="submit">Save autopilot</button><span data-msg class="small muted"></span></div>
+      </form>
+      <form class="panel pad stack gap-4" data-form="broadcast">
+        <div><h2 class="section-title">${icon("megaphone", "bold")} Message everyone</h2><p class="small muted mt-1">Appears in every player's updates straight away, with a sound.</p></div>
+        <div class="field"><label for="bc-title">Title</label><input class="input" id="bc-title" name="title" maxlength="80" required placeholder="Round 2 starts at 4 pm"></div>
+        <div class="field"><label for="bc-body">Message</label><textarea class="input" id="bc-body" name="body" rows="3" maxlength="400" placeholder="Optional details"></textarea></div>
+        <div class="field"><label for="bc-to">Send to</label><select class="input" id="bc-to" name="to"><option value="players">All players</option><option value="everyone">Everyone with an account</option></select></div>
+        <div class="row gap-3"><button class="btn btn-primary" type="submit">${icon("paper-plane-right", "bold")} Send</button><span data-msg class="small muted"></span></div>
+      </form>`
+    : "";
+  return `<div class="stack gap-8">${form}${autopilot}${list}</div>`;
 }
 
 function newEditionModal() {
@@ -170,7 +427,7 @@ function peopleTab() {
 
   const table = visible.length
     ? `<div class="panel table-wrap"><table class="table" style="min-width:720px">
-        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th class="r">Rating</th><th style="width:7rem"></th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th class="r">Rating</th><th style="width:9rem"></th></tr></thead>
         <tbody>${visible
           .map(
             (p) => `<tr>
@@ -178,7 +435,7 @@ function peopleTab() {
               <td class="muted">${esc(p.email)}</td>
               <td>${ROLE_LABEL[p.role]}</td>
               <td class="r num">${p.role === "player" ? p.rating : "-"}</td>
-              <td class="r">${isAdmin
+              <td class="r">${p.role === "player" ? `<a class="icon-btn" href="home.html?player=${p.id}" aria-label="View ${esc(p.full_name)}'s dashboard" title="View their dashboard">${icon("eye")}</a>` : ""}${isAdmin
                 ? `<button class="icon-btn" data-action="edit-person" data-id="${p.id}" aria-label="Edit ${esc(p.full_name)}">${icon("pencil-simple")}</button>${p.id !== profile.id ? `<button class="icon-btn danger" data-action="delete-person" data-id="${p.id}" aria-label="Delete ${esc(p.full_name)}">${icon("trash")}</button>` : ""}`
                 : ""}</td>
             </tr>`,
@@ -355,7 +612,7 @@ function matchesTab() {
       const g = store.groups.find((x) => x.id === m.group_id);
       return `<div class="admin-row">
         <div class="grow">
-          <span class="xs dim" style="display:block;margin-bottom:0.25rem">${m.stage === "group" ? `Group ${g?.label ?? ""}` : `${STAGE_LABEL[m.stage]} ${m.bracket_slot}`}${m.scheduled_at ? `, ${formatDateTime(m.scheduled_at)}` : ""}</span>
+          <span class="xs dim" style="display:block;margin-bottom:0.25rem">${m.stage === "group" ? `Group ${g?.label ?? ""}` : m.tiebreak_of ? `${STAGE_LABEL[m.stage]} Armageddon` : `${STAGE_LABEL[m.stage]} ${m.bracket_slot}`}${m.scheduled_at ? `, ${formatDateTime(m.scheduled_at)}` : ""}</span>
           <span class="vs">${playerHtml(m.white_id)}<span class="xs dim">vs</span>${playerHtml(m.black_id)}</span>
         </div>
         ${statusHtml(m)}
@@ -402,7 +659,7 @@ function matchModal(m) {
   const nameOf = (id) => esc(store.profileById.get(id)?.full_name ?? "");
 
   const d = openModal(
-    m.stage === "group" ? `Group game, round ${m.round}` : `${STAGE_LABEL[m.stage]} ${m.bracket_slot}`,
+    m.stage === "group" ? `Group game, round ${m.round}` : m.tiebreak_of ? `${STAGE_LABEL[m.stage]} Armageddon` : `${STAGE_LABEL[m.stage]} ${m.bracket_slot}`,
     `<form class="stack gap-4">
       <div class="field">
         <label for="mm-when">Start time</label>
@@ -424,11 +681,12 @@ function matchModal(m) {
         </select>
         <p class="hint">Use this for games played over the board, or to correct a result. Ratings update automatically.</p>
       </div>
-      ${knockout
+      <a class="btn btn-sm" href="play.html?id=${m.id}" style="align-self:flex-start">${icon("crown-simple", "bold")} Open in the Arena</a>
+      ${knockout && !m.tiebreak_of
         ? `<div class="field" data-tiebreak>
             <label for="mm-winner">Tiebreak winner</label>
             <select class="input" id="mm-winner" name="winner"><option value="">Choose a player</option>${[m.white_id, m.black_id].filter(Boolean).map((id) => `<option value="${id}" ${id === m.winner_id ? "selected" : ""}>${nameOf(id)}</option>`).join("")}</select>
-            <p class="hint">Knockout games need someone to go through. Pick who won the tiebreak.</p>
+            <p class="hint">Knockout games need someone to go through. ${store.tournament?.auto_tiebreak ? "Leave it empty and an Armageddon game is created automatically, or pick the winner of a tiebreak played elsewhere." : "Pick who won the tiebreak."}</p>
           </div>`
         : ""}
       <div data-err></div>
@@ -466,7 +724,7 @@ function matchModal(m) {
       err.innerHTML = notice("A player can't play themselves.", "error");
       return;
     }
-    if (knockout && result === "1/2-1/2" && !form.winner.value) {
+    if (knockout && !m.tiebreak_of && result === "1/2-1/2" && !form.winner.value && !store.tournament?.auto_tiebreak) {
       err.innerHTML = notice("A drawn knockout game needs a tiebreak winner.", "error");
       return;
     }
@@ -476,7 +734,7 @@ function matchModal(m) {
       patch.status = result ? "completed" : m.move_count ? "live" : "scheduled";
       patch.end_reason = result ? "result recorded by staff" : null;
     }
-    if (knockout && result === "1/2-1/2") patch.winner_id = form.winner.value;
+    if (knockout && result === "1/2-1/2" && form.winner?.value) patch.winner_id = form.winner.value;
     await withBusy(form.querySelector("[type=submit]"), async () => {
       if (Object.keys(patch).length) await updateMatch(m.id, patch);
       d.close();
@@ -491,7 +749,7 @@ function knockoutTab() {
   if (!store.tournament) return emptyState("No edition yet", "Create the tournament first.");
   const groupGames = store.matches.filter((m) => m.stage === "group");
   const finished = groupGames.filter((m) => m.status === "completed").length;
-  const existing = store.matches.filter((m) => m.stage !== "group");
+  const existing = bracketGames(store.matches).filter((m) => m.stage !== "group");
   const started = existing.some((m) => m.status !== "scheduled" || m.move_count > 0);
   const q = qualifiers(store.groups, store.groupPlayers, store.matches, store.profileById);
   const name = (id) => (id ? esc(store.profileById.get(id)?.full_name ?? "Unknown") : `<span class="dim">To be decided</span>`);
@@ -508,8 +766,8 @@ function knockoutTab() {
       <div>
         <h2 class="section-title">Knockout bracket</h2>
         <p class="small muted mt-1" style="max-width:60ch">${existing.length
-          ? "The bracket is set. Winners move into the next round on their own as games finish."
-          : `Group stage: ${finished} of ${groupGames.length || 48} games finished. The top two in each group go through. ${TIEBREAK_NOTE}`}</p>
+          ? "The bracket is set. Winners move into the next round on their own as games finish; drawn games get an Armageddon tiebreak."
+          : `Group stage: ${finished} of ${groupGames.length || 48} games finished. The top two in each group go through. ${TIEBREAK_NOTE}${store.tournament.auto_knockout ? " The bracket builds itself when the last group game ends." : ""}`}</p>
       </div>
       <div class="row gap-2">
         ${existing.length ? `<a class="btn" href="bracket.html">View bracket</a>` : ""}
@@ -581,14 +839,27 @@ app.addEventListener("click", async (e) => {
       const groupGames = store.matches.filter((m) => m.stage === "group");
       const finished = groupGames.filter((m) => m.status === "completed").length;
       const warn = finished < groupGames.length ? `Only ${finished} of ${groupGames.length} group games are finished, so the tables may still change. ` : "";
-      const replace = store.matches.some((m) => m.stage !== "group") ? "This replaces the current bracket. " : "";
+      const replace = bracketGames(store.matches).some((m) => m.stage !== "group") ? "This replaces the current bracket. " : "";
       if ((warn || replace) && !confirm(`${warn}${replace}Generate the bracket now?`)) return;
       return withBusy(el, async () => {
-        await generateKnockout(t.id, store.groups, store.groupPlayers, store.matches, store.profileById);
+        await generateKnockout(t.id);
         await refresh();
       }, err);
     }
   }
+});
+
+// Arbiter buttons on the Live tab.
+app.addEventListener("click", async (e) => {
+  const el = e.target.closest("[data-game]");
+  if (!el) return;
+  const extra = el.dataset.game === "add_time" ? { color: el.dataset.color, seconds: 30 } : {};
+  await withBusy(el, async () => {
+    const res = await callFunction("game", { action: el.dataset.game, match_id: el.dataset.id, ...extra });
+    const i = store.matches.findIndex((m) => m.id === res.match.id);
+    if (i >= 0) store.matches[i] = res.match;
+    draw();
+  }, app.querySelector("[data-err]"));
 });
 
 app.addEventListener("change", async (e) => {
@@ -612,6 +883,33 @@ app.addEventListener("input", (e) => {
 });
 
 app.addEventListener("submit", async (e) => {
+  const auto = e.target.closest("[data-form=autopilot]");
+  if (auto) {
+    e.preventDefault();
+    await withBusy(auto.querySelector("[type=submit]"), async () => {
+      await updateTournament(store.tournament.id, {
+        auto_tiebreak: auto.auto_tiebreak.checked,
+        auto_knockout: auto.auto_knockout.checked,
+        tiebreak_delay_minutes: Number(auto.delay.value),
+        draw_offer_min_moves: Number(auto.draw_min.value),
+      });
+      await refresh();
+      const m = app.querySelector("[data-form=autopilot] [data-msg]");
+      if (m) m.textContent = "Saved.";
+    }, auto.querySelector("[data-msg]"));
+    return;
+  }
+  const bc = e.target.closest("[data-form=broadcast]");
+  if (bc) {
+    e.preventDefault();
+    const ids = store.profiles.filter((p) => bc.to.value === "everyone" || p.role === "player").map((p) => p.id);
+    await withBusy(bc.querySelector("[type=submit]"), async () => {
+      await sendMessage(ids, bc.title.value.trim(), bc.body.value.trim() || null, "home.html");
+      bc.reset();
+      bc.querySelector("[data-msg]").textContent = `Sent to ${ids.length}.`;
+    }, bc.querySelector("[data-msg]"));
+    return;
+  }
   const form = e.target.closest("[data-form=edition]");
   if (!form) return;
   e.preventDefault();

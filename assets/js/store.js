@@ -131,10 +131,31 @@ export const involves = (m, playerId) => m.white_id === playerId || m.black_id =
 
 export const STAGE_LABEL = { group: "Group stage", r16: "Round of 16", qf: "Quarterfinal", sf: "Semifinal", final: "Final" };
 
+// Armageddon games settle drawn knockout games; they are not bracket games.
+export const isTiebreak = (m) => Boolean(m.tiebreak_of);
+export const bracketGames = (matches) => matches.filter((m) => !m.tiebreak_of);
+
 export function matchContext(m) {
   if (m.stage === "group") {
     const g = store.groups.find((x) => x.id === m.group_id);
     return `Group ${g?.label ?? ""} · Round ${m.round}`;
   }
-  return STAGE_LABEL[m.stage];
+  return m.tiebreak_of ? `${STAGE_LABEL[m.stage]} · Armageddon` : STAGE_LABEL[m.stage];
+}
+
+// Starting clocks for a game: its own (Armageddon) or the edition's.
+export function baseClocks(m) {
+  const base = (store.tournament?.time_control_minutes ?? 10) * 60_000;
+  return {
+    white: m.white_base_ms ?? base,
+    black: m.black_base_ms ?? base,
+    increment: m.increment_ms ?? (store.tournament?.increment_seconds ?? 0) * 1000,
+  };
+}
+
+export function timeControlLabel(m) {
+  const c = baseClocks(m);
+  const min = (ms) => `${Math.round(ms / 6000) / 10}`;
+  const inc = Math.round(c.increment / 1000);
+  return c.white === c.black ? `${min(c.white)}+${inc}` : `${min(c.white)}|${min(c.black)}+${inc}`;
 }

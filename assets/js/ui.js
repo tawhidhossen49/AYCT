@@ -5,6 +5,7 @@ import { ROLE_LABEL, isStaff, signOut } from "./auth.js";
 import { store, effectiveStatus, matchContext } from "./store.js";
 import { formatDate, formatTime, relative, serverNow } from "./time.js";
 import { formatPoints, groupStandings } from "./standings.js";
+import { mountBell, startFeed } from "./notify.js";
 
 export function esc(value) {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -15,7 +16,8 @@ export const icon = (name, weight = "") => `<i class="ph${weight ? "-" + weight 
 // ---------------------------------------------------------------- shell
 
 const LINKS = [
-  { href: "home.html", label: "Home", icon: "house", key: "home" },
+  { href: "home.html", label: "Dashboard", icon: "house", key: "home" },
+  { href: "play.html", label: "Arena", icon: "crown-simple", key: "arena" },
   { href: "fixtures.html", label: "Fixtures", icon: "list-bullets", key: "fixtures" },
   { href: "groups.html", label: "Groups", icon: "squares-four", key: "groups" },
   { href: "bracket.html", label: "Bracket", icon: "tree-structure", key: "bracket" },
@@ -23,34 +25,47 @@ const LINKS = [
 ];
 
 // Top bar (desktop) and bottom tab bar (phones), with the current page lit.
+// Staff get a switch between the two sides of the portal: what players
+// see, and the Control Room where the tournament is run.
 export function mountShell(profile, active) {
-  const links = isStaff(profile.role) ? [...LINKS, { href: "admin.html", label: "Admin", icon: "wrench", key: "admin" }] : LINKS;
+  const staff = isStaff(profile.role);
   const year = store.tournament?.year ?? "";
+  const inControl = active === "admin";
 
   const header = document.createElement("header");
   header.className = "topbar";
   header.innerHTML = `
     <div class="topbar-inner">
-      <a href="home.html" class="brand" aria-label="Home">
+      <a href="${inControl ? "admin.html" : "home.html"}" class="brand" aria-label="Home">
         <img src="assets/brand/logo.png" alt="" width="32" height="32">
-        <span class="brand-text"><span class="display">Amaze Youth Chess</span><span class="display-light" data-year>Tournament ${esc(year)}</span></span>
+        <span class="brand-text"><span class="display">Amaze Youth Chess</span><span class="display-light" data-year>${inControl ? "Control room" : `Tournament ${esc(year)}`}</span></span>
       </a>
       <nav class="nav" aria-label="Main">
-        ${links.map((l) => `<a href="${l.href}" class="${l.key === active ? "active" : ""}">${l.label}</a>`).join("")}
+        ${inControl ? "" : LINKS.map((l) => `<a href="${l.href}" class="${l.key === active ? "active" : ""}">${l.label}</a>`).join("")}
       </nav>
+      ${staff
+        ? `<div class="portal-switch" role="group" aria-label="Portal">
+            <a href="home.html" class="${inControl ? "" : "on"}">${icon("users-three", "bold")}<span>Portal</span></a>
+            <a href="admin.html" class="${inControl ? "on" : ""}">${icon("sliders-horizontal", "bold")}<span>Control room</span></a>
+          </div>`
+        : ""}
       <div class="account">
         <div class="account-text">
           <p class="name truncate">${esc(profile.full_name)}</p>
           <p class="role">${ROLE_LABEL[profile.role]}</p>
         </div>
-        <button class="btn btn-sm" data-signout>${icon("sign-out")}<span class="signout-label">Sign out</span></button>
+        <span data-bell></span>
+        <button class="btn btn-sm" data-signout aria-label="Sign out">${icon("sign-out")}<span class="signout-label">Sign out</span></button>
       </div>
     </div>`;
 
+  const tabLinks = staff
+    ? [LINKS[0], LINKS[1], LINKS[2], LINKS[4], { href: "admin.html", label: "Control", icon: "sliders-horizontal", key: "admin" }]
+    : [LINKS[0], LINKS[1], LINKS[2], LINKS[3], LINKS[4]];
   const tabbar = document.createElement("nav");
   tabbar.className = "tabbar";
   tabbar.setAttribute("aria-label", "Main");
-  tabbar.innerHTML = links
+  tabbar.innerHTML = tabLinks
     .map((l) => `<a href="${l.href}" class="${l.key === active ? "active" : ""}">${icon(l.icon, l.key === active ? "fill" : "")}${l.label}</a>`)
     .join("");
 
@@ -58,6 +73,9 @@ export function mountShell(profile, active) {
   document.body.append(tabbar);
   document.body.classList.add("has-tabbar");
   header.querySelector("[data-signout]").addEventListener("click", signOut);
+  const bellSlot = header.querySelector("[data-bell]");
+  mountBell(bellSlot);
+  startFeed(profile.id);
 }
 
 // The year shows once the tournament has loaded.
@@ -127,7 +145,7 @@ export function mountFooter() {
       </div>
       <div>
         <h4>Portal</h4>
-        <ul><li><a href="home.html">Home</a></li><li><a href="fixtures.html">Fixtures</a></li><li><a href="groups.html">Groups</a></li><li><a href="bracket.html">Bracket</a></li><li><a href="leaderboard.html">Leaderboard</a></li></ul>
+        <ul><li><a href="home.html">Dashboard</a></li><li><a href="play.html">Arena</a></li><li><a href="fixtures.html">Fixtures</a></li><li><a href="groups.html">Groups</a></li><li><a href="bracket.html">Bracket</a></li><li><a href="leaderboard.html">Leaderboard</a></li></ul>
       </div>
       <div>
         <h4>Tournament</h4>
@@ -169,7 +187,7 @@ export function matchRowHtml(m, me = null) {
   const ctx = esc(matchContext(m));
   const side = (id, colour) =>
     `<span class="side${m.winner_id && m.winner_id !== id ? " lost" : ""}"><span class="colour-dot ${colour}" aria-label="${colour}"></span>${playerHtml(id, { me })}</span>`;
-  return `<a href="match.html?id=${m.id}" class="match-row">
+  return `<a href="play.html?id=${m.id}" class="match-row">
     <span class="context">${ctx}${m.scheduled_at ? `<span class="mt-1" style="display:block">${formatDate(m.scheduled_at)}</span>` : ""}</span>
     <span class="sides">${side(m.white_id, "white")}${side(m.black_id, "black")}<span class="context-mobile">${ctx}</span></span>
     ${statusHtml(m)}

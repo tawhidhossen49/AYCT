@@ -39,23 +39,27 @@ the folder as it is.
 | Commentator | Watch every board and post live commentary beside a game |
 | Player      | See groups, fixtures, bracket and leaderboard, and play their own games |
 
-There is no public sign-up. Admins create every account under Admin, People.
+There is no public sign-up. Admins create every account under Control Room, People.
 
 ## Files
 
 ```
 index.html          Public landing page (hero, format, road to the crown, groups, live board, roles, FAQ)
 login.html          Sign in
-home.html           Home: next game and countdown, setup checklist, live boards
+home.html           Dashboard. Players: next game, updates, record, rating history, group, results.
+                    Staff: organiser overview, and any player's dashboard (home.html?player=...)
+play.html           The Arena: play, watch, arbitrate and review games (play.html?id=...);
+                    without an id, the Arena lobby (your board, live games, finished games)
 fixtures.html       Every game, filterable by round
 groups.html         The eight group tables
 bracket.html        Round of 16 to the final
 leaderboard.html    Players by rating
-match.html          The board (match.html?id=...)
-admin.html          Admin panel (#tournament, #people, #groups, #matches, #knockout)
+match.html          Old game links; forwards to play.html
+admin.html          Control Room (#live, #tournament, #people, #groups, #matches, #knockout, #activity)
 
 assets/css/styles.css       Design system and portal styling
 assets/css/landing.css      Landing page sections
+assets/css/arena.css        The Arena
 assets/brand/               Logo and chess piece images from the poster
 assets/js/config.js         Supabase project URL and public key
 assets/js/supabase.js       Supabase connection
@@ -69,6 +73,9 @@ assets/js/ui.js             Header, match rows, group tables, dialogs
 assets/js/page.js           What every page does first
 assets/js/motion.js         Smooth scroll, reveals, counters, nav, cursor (GSAP + Lenis)
 assets/js/sequence.js       Scroll-scrubbed video engine for the hero (used once a clip is added)
+assets/js/notify.js         Updates feed: the bell, toasts, the dashboard feed
+assets/js/arena/sounds.js   Move, capture, check and clock sounds (Web Audio, no files)
+assets/js/arena/engine.js   Stockfish game review (after the game only)
 assets/js/pages/*.js        One script per page
 
 supabase/migrations/        Database tables, security rules, rating and bracket logic
@@ -81,19 +88,50 @@ so the site needs an internet connection, which it needs for Supabase anyway.
 
 Moves never go straight to the database. The `game` function checks that
 it's your turn, that the move is legal, and that your clock hasn't run out,
-then saves the new position. A game starts at its scheduled time with
-white's clock running, so a player who doesn't show up loses on time.
+then saves the new position. It follows the FIDE Online Chess Regulations:
+
+- Checkmate, stalemate, threefold repetition, the fifty-move rule and
+  insufficient material end the game automatically.
+- A flag fall loses, unless the opponent can't possibly mate (then a draw).
+- A game starts at its scheduled time with White's clock running, and a
+  disconnection doesn't stop the clock, so a no-show loses on time.
+- A draw offer stands until it is accepted, declined, or the opponent moves.
+- Premoves are allowed; up to 0.5 s of network lag per move is forgiven.
+- Arbiters (admins and moderators) can pause, add time, take back a move,
+  adjudicate and message players, from the Arena's Arbiter tab.
+
+## What runs by itself
+
+- Timeouts and no-shows are ended by the server every 20 seconds (pg_cron),
+  even if nobody has the game open.
+- Players get updates (bell, toast, dashboard) when a game is scheduled or
+  moved, 10 minutes before it starts, when it ends, when they advance, and
+  when the arbiter messages them.
+- Ratings (Elo, K = 32) update when a game ends and reverse if a result is
+  changed, reset or deleted.
+- A drawn knockout game gets an Armageddon game, colours reversed: White 5
+  minutes, Black 4, +2 seconds, Black goes through on a draw. It is not rated.
+- When the last group game ends, the round of 16 is drawn from the tables.
+- Winners move into the next round; the final's winner completes the event.
+
+The two switches (Armageddon, bracket after groups), the Armageddon delay and
+the earliest move for draw offers are in Control Room, Tournament, Autopilot.
+
+Fair play: the two players can't see commentary until their game ends, the
+engine review only opens after the game, and leaving the game tab during play
+is logged for the arbiter (Control Room, Live and Activity).
 
 ## Running a tournament
 
-1. Admin, Tournament: create the edition (year, time control).
-2. Admin, People: add the 32 players (with ratings), moderators and commentators.
-3. Admin, Groups: run the seeded draw, or place players by hand.
-4. Admin, Matches: generate the group fixtures, then set a start time per round.
+1. Control Room, Tournament: create the edition (year, time control).
+2. Control Room, People: add the 32 players (with ratings), moderators and commentators.
+3. Control Room, Groups: run the seeded draw, or place players by hand.
+4. Control Room, Matches: generate the group fixtures, then set a start time per round.
 5. Games are played on the site. Staff can also enter results for games
    played over the board, or correct them.
-6. Admin, Knockout: when the group stage is done, generate the bracket.
-   Winners move forward on their own; schedule each knockout round.
+6. The bracket builds itself when the last group game ends (or Control
+   Room, Knockout: generate it by hand). Schedule each knockout round.
+7. During games, watch everything from Control Room, Live.
 
 ## Setting up a fresh Supabase project
 
@@ -130,14 +168,3 @@ To replace the film with a new clip:
 `Raw-Video/` is the source only; the website uses `assets/sequences/hero/`.
 
 Design notes live in `BLUEPRINT.md` and `REDESIGN_PLAN.md`.
-
-## Pending server updates (from the bug-fix pass)
-
-Two database migrations and two function updates are written but not yet
-applied, because the Supabase connection was unavailable:
-
-1. SQL editor: run `supabase/migrations/0003_reverse_ratings_on_delete.sql`.
-2. Redeploy `supabase/functions/game` and `supabase/functions/admin-users`
-   (Dashboard, Edge Functions, open each function, paste the new `index.js`, Deploy;
-   or `npx supabase functions deploy game` and `admin-users`).
-3. Then SQL editor: run `supabase/migrations/0004_private_emails.sql`.

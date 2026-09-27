@@ -75,5 +75,5 @@ function card(m) {
   else if (status === "completed") foot = `<span class="num">${resultText(m)}${m.result === "1/2-1/2" && !m.winner_id ? " · tiebreak pending" : ""}</span>`;
   else if (m.scheduled_at) foot = `${formatDate(m.scheduled_at)}, ${formatTime(m.scheduled_at)}`;
   else foot = "Not scheduled";
-  return `<a href="match.html?id=${m.id}" class="panel bracket-card${status === "live" ? " live" : ""}">${line(m.white_id)}${line(m.black_id)}<span class="foot">${foot}</span></a>`;
+  return `<a href="play.html?id=${m.id}" class="panel bracket-card${status === "live" ? " live" : ""}">${line(m.white_id)}${line(m.black_id)}<span class="foot">${foot}</span></a>`;
 }
