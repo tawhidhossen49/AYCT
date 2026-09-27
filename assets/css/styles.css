@@ -1425,3 +1425,13 @@ a.ctl-board { pointer-events: auto; display: block; }
 .ctl-actions .btn { flex: 1; }
 .ctl-actions .icon-btn { border: 1px solid var(--edge); font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; }
 @media (max-width: 639px) { .hide-sm { display: none; } }
+
+/* Test bots and the Control Room's test panel. */
+.bot-tag { flex-shrink: 0; align-self: center; padding: 0.05rem 0.4rem; border-radius: 999px; border: 1px dashed rgb(120 170 255 / 0.6); color: #8fb6ff; font-family: var(--font-mono); font-size: 0.58rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; line-height: 1.5; }
+.test-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; padding: 0.8rem 1rem; margin-bottom: 1.5rem; border-radius: var(--r-md); border: 1px dashed rgb(120 170 255 / 0.55); background: rgb(90 140 255 / 0.08); font-size: var(--text-sm); }
+.test-banner i { color: #8fb6ff; font-size: 1.1rem; }
+.test-panel { border-style: dashed; border-color: rgb(120 170 255 / 0.4); }
+.test-panel .steps { display: grid; gap: 0.75rem; margin-top: 1.25rem; }
+@media (min-width: 900px) { .test-panel .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.test-panel .step { display: flex; flex-direction: column; gap: 0.6rem; padding: 1rem; border-radius: var(--r-md); background: var(--panel); border: 1px solid var(--edge); }
+.test-panel .step .btn { margin-top: auto; align-self: flex-start; }

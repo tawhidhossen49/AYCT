@@ -13,6 +13,7 @@
 //   add_time    { color: "white"|"black", seconds }
 //   takeback                                undoes the last move
 //   adjudicate  { result, reason? }
+//   bot_move                                a test bot plays its move (anyone watching)
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Chess } from "npm:chess.js@1.4.0";
@@ -29,6 +30,28 @@ const json = (body, status = 200) =>
 // Network lag the server forgives on each move: the player is charged the
 // time they report thinking, but never less than the server saw minus this.
 const MAX_LAG_MS = 500;
+
+// A test bot's move: mate if it can, otherwise usually the most valuable
+// safe-looking capture, with some randomness so games differ. Weak on
+// purpose; it exists to exercise the tournament, not to beat anyone.
+const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+function botMove(chess) {
+  const moves = chess.moves({ verbose: true });
+  for (const m of moves) {
+    chess.move(m);
+    const mate = chess.isCheckmate();
+    chess.undo();
+    if (mate) return m;
+  }
+  const score = (m) => {
+    let s = Math.random() * 2;
+    if (m.captured) s += VALUE[m.captured] * 2 - VALUE[m.piece] * 0.5;
+    if (m.promotion) s += 8;
+    if (m.san.includes("+")) s += 0.5;
+    return s;
+  };
+  return moves.map((m) => [score(m), m]).sort((a, b) => b[0] - a[0])[0][1];
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -176,6 +199,42 @@ Deno.serve(async (req) => {
         draw_offer_by: match.draw_offer_by === uid ? uid : null,
       });
 
+      if (chess.isCheckmate()) finish(turn === "w" ? "1-0" : "0-1", "checkmate");
+      else if (chess.isStalemate()) finish("1/2-1/2", "stalemate");
+      else if (chess.isInsufficientMaterial()) finish("1/2-1/2", "insufficient material");
+      else if (chess.isThreefoldRepetition()) finish("1/2-1/2", "threefold repetition");
+      else if (chess.isDrawByFiftyMoves()) finish("1/2-1/2", "fifty-move rule");
+      break;
+    }
+
+    // A test bot's turn. Anyone watching the game may ask for it; the server
+    // picks the move, so nobody can steer it.
+    case "bot_move": {
+      if (paused) return json({ error: "The arbiter has paused this game" }, 409);
+      const { data: mover } = await admin.from("profiles").select("is_bot").eq("id", toMoveId).single();
+      if (!mover?.is_bot) return json({ error: "It's not a bot's move" }, 409);
+      if (leftForMover <= 0) {
+        timeoutResult();
+        break;
+      }
+      // Bots accept a draw offered to them.
+      if (match.draw_offer_by && match.draw_offer_by !== toMoveId) {
+        finish("1/2-1/2", "agreement");
+        break;
+      }
+      if (!chess.moves().length) return json({ error: "No legal move" }, 409);
+      chess.move(botMove(chess));
+      const after = Math.round(leftForMover + incMs);
+      Object.assign(patch, {
+        fen: chess.fen(),
+        pgn: chess.pgn(),
+        move_count: match.move_count + 1,
+        [moverKey]: after,
+        [turn === "w" ? "black_ms" : "white_ms"]: turn === "w" ? match.black_ms : match.white_ms,
+        clock_started_at: new Date(now).toISOString(),
+        clocks: [...(match.clocks ?? []), after],
+        draw_offer_by: null,
+      });
       if (chess.isCheckmate()) finish(turn === "w" ? "1-0" : "0-1", "checkmate");
       else if (chess.isStalemate()) finish("1/2-1/2", "stalemate");
       else if (chess.isInsufficientMaterial()) finish("1/2-1/2", "insufficient material");

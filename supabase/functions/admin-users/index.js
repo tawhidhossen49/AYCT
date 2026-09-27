@@ -4,6 +4,8 @@
 // POST { action: "create", email, password, full_name, role, rating?, school? }
 // POST { action: "update", id, email?, password?, full_name?, role?, rating?, school? }
 // POST { action: "delete", id }
+// POST { action: "fill_bots", tournament_id }   test bots in every empty group slot
+// POST { action: "remove_bots" }                 every bot and every game they played
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -17,6 +19,14 @@ const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
 const ROLES = ["admin", "moderator", "commentator", "player"];
+
+// Test bots are named after world champions, so they're easy to spot.
+const BOT_NAMES = [
+  "Steinitz", "Lasker", "Capablanca", "Alekhine", "Euwe", "Botvinnik", "Smyslov", "Tal",
+  "Petrosian", "Spassky", "Fischer", "Karpov", "Kasparov", "Kramnik", "Anand", "Carlsen",
+  "Topalov", "Ponomariov", "Khalifman", "Kasimdzhanov", "Ding", "Gukesh", "Menchik", "Polgar",
+  "Hou", "Chiburdanidze", "Gaprindashvili", "Xie", "Ju", "Yifan", "Morphy", "Philidor",
+];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -52,6 +62,80 @@ Deno.serve(async (req) => {
     const { data, error } = await admin.from("profiles").select("id, email");
     if (error) return json({ error: error.message }, 400);
     return json({ people: data });
+  }
+
+  // Test bots fill every empty group slot of an edition. Each slot's pot
+  // decides the bot's rating, so the seeding still makes sense.
+  if (body.action === "fill_bots") {
+    const tournamentId = str(body.tournament_id);
+    const { data: groups } = await admin.from("groups").select("id, label").eq("tournament_id", tournamentId).order("label");
+    if (!groups?.length) return json({ error: "This edition has no groups" }, 400);
+    const { data: placed } = await admin.from("group_players").select("group_id, seed").eq("tournament_id", tournamentId);
+    const taken = new Set((placed ?? []).map((p) => `${p.group_id}:${p.seed}`));
+    const slots = [];
+    for (const g of groups) for (const seed of [1, 2, 3, 4]) if (!taken.has(`${g.id}:${seed}`)) slots.push({ group: g, seed });
+    if (!slots.length) return json({ error: "Every group slot is already filled" }, 400);
+
+    const base = { 1: 1750, 2: 1450, 3: 1150, 4: 850 };
+    const tag = crypto.randomUUID().slice(0, 6);
+    const made = [];
+    const makeBot = async ({ group, seed }, i) => {
+      const email = `bot-${tag}-${i + 1}@bots.ayct.test`;
+      const full_name = `Bot ${BOT_NAMES[i % BOT_NAMES.length]}`;
+      const { data: created, error } = await admin.auth.admin.createUser({
+        email,
+        password: crypto.randomUUID(),
+        email_confirm: true,
+        user_metadata: { full_name, bot: true },
+      });
+      if (error) throw new Error(error.message);
+      const rating = base[seed] + Math.floor(Math.random() * 200);
+      const { error: pErr } = await admin.from("profiles").insert({ id: created.user.id, email, full_name, role: "player", rating, school: "Test bot", is_bot: true });
+      if (pErr) throw new Error(pErr.message);
+      made.push({ tournament_id: tournamentId, group_id: group.id, player_id: created.user.id, seed });
+    };
+    try {
+      for (let i = 0; i < slots.length; i += 8) await Promise.all(slots.slice(i, i + 8).map((s, j) => makeBot(s, i + j)));
+      const { error } = await admin.from("group_players").insert(made);
+      if (error) throw new Error(error.message);
+    } catch (err) {
+      return json({ error: `Bots partly created: ${err.message}. Use "Remove test bots" and try again.` }, 500);
+    }
+    return json({ added: made.length });
+  }
+
+  // Removes every bot and every game a bot played in, plus any knockout
+  // bracket built while bots were in it. Deleting a game undoes its rating
+  // change (migration 0003), so real players' ratings return to normal.
+  if (body.action === "remove_bots") {
+    const { data: bots } = await admin.from("profiles").select("id").eq("is_bot", true);
+    const ids = (bots ?? []).map((b) => b.id);
+    if (!ids.length) return json({ removed: 0, games: 0 });
+    const list = `(${ids.join(",")})`;
+
+    const { data: games } = await admin.from("matches").select("id, tournament_id").or(`white_id.in.${list},black_id.in.${list}`);
+    const { data: seats } = await admin.from("group_players").select("tournament_id").in("player_id", ids);
+    const editions = [...new Set([...(games ?? []), ...(seats ?? [])].map((r) => r.tournament_id))];
+    const { data: bracket } = editions.length
+      ? await admin.from("matches").select("id").in("tournament_id", editions).neq("stage", "group")
+      : { data: [] };
+    const gameIds = [...new Set([...(games ?? []), ...(bracket ?? [])].map((g) => g.id))];
+
+    for (let i = 0; i < gameIds.length; i += 100) {
+      const chunk = gameIds.slice(i, i + 100);
+      // Updates about those games would point at nothing.
+      await admin.from("notifications").delete().in("link", chunk.map((id) => `play.html?id=${id}`));
+      const { error } = await admin.from("matches").delete().in("id", chunk);
+      if (error) return json({ error: error.message }, 500);
+    }
+    for (let i = 0; i < ids.length; i += 8) await Promise.all(ids.slice(i, i + 8).map((id) => admin.auth.admin.deleteUser(id)));
+
+    // Each edition goes back to the stage its remaining games allow.
+    for (const t of editions) {
+      const { count } = await admin.from("matches").select("id", { count: "exact", head: true }).eq("tournament_id", t);
+      await admin.from("tournaments").update({ status: count ? "groups" : "setup" }).eq("id", t);
+    }
+    return json({ removed: ids.length, games: gameIds.length });
   }
 
   if (body.action === "create") {

@@ -10,7 +10,7 @@ import { formatClock, formatDateTime, formatTime, fromLocalInput, serverNow, toL
 import { TIEBREAK_NOTE } from "../standings.js";
 import {
   clearGroups, createTournament, generateGroupFixtures, generateKnockout, qualifiers, R16_PAIRINGS,
-  resetGame, scheduleRound, seededDraw, sendMessage, setActiveTournament, setGroupSlot, updateMatch, updateTournament,
+  resetGame, resetRealTestGames, scheduleRound, seededDraw, sendMessage, simulateGames, setActiveTournament, setGroupSlot, updateMatch, updateTournament,
 } from "../ops.js";
 import { emptyState, esc, icon, liveTag, modalOpen, notice, openModal, playerHtml, statusHtml, withBusy } from "../ui.js";
 import { mountMiniBoards } from "../board.js";
@@ -41,7 +41,7 @@ const ROUNDS = [
 
 // View state that survives redraws, plus what the Live and Activity tabs
 // watch: who is in which game room, and the fair-play log.
-const ui = { roleFilter: "all", query: "", round: "g1" };
+const ui = { roleFilter: "all", query: "", round: "g1", testMsg: "" };
 const watch = { presence: new Map(), goneSince: new Map(), events: [], notes: [], loaded: false };
 // How the fair-play log reads.
 const EVENT_TEXT = {
@@ -96,7 +96,7 @@ function draw() {
   const tab = currentTab();
   const tabs = `<nav class="tabs" aria-label="Admin sections">${TABS.map((t) => `<a class="tab${t.id === tab ? " active" : ""}" href="#${t.id}">${t.label}</a>`).join("")}</nav>`;
   const body = { live: liveTab, tournament: tournamentTab, people: peopleTab, groups: groupsTab, matches: matchesTab, knockout: knockoutTab, activity: activityTab }[tab]();
-  app.innerHTML = tabs + (store.error ? notice(esc(store.error), "error") : "") + body;
+  app.innerHTML = tabs + (store.error ? notice(esc(store.error), "error") : "") + testBanner(tab) + body;
   if (tab === "live") mountMiniBoards(app);
 }
 
@@ -180,6 +180,7 @@ function presenceOf(userId, matchId) {
 
 // Not in the game room for over a minute while their game is live.
 function offline(userId, matchId) {
+  if (store.profileById.get(userId)?.is_bot) return false;
   const gone = watch.goneSince.get(`${userId}:${matchId}`);
   return presenceOf(userId, matchId) === "off" && gone && Date.now() - gone > 60_000;
 }
@@ -228,7 +229,7 @@ function liveTab() {
     const c = liveClocks(m);
     const turn = c.turn === colour && !m.paused_at;
     return `<div class="ctl-player${turn ? " turn" : ""}">
-      <span class="presence ${pres}" title="${pres === "on" ? "In the game room" : pres === "away" ? "Tab hidden" : "Not in the game room"}"></span>
+      ${store.profileById.get(id)?.is_bot ? "" : `<span class="presence ${pres}" title="${pres === "on" ? "In the game room" : pres === "away" ? "Tab hidden" : "Not in the game room"}"></span>`}
       <span class="grow truncate">${esc(store.profileById.get(id)?.full_name ?? "?")}</span>
       <span class="ctl-clock num${c[colour] < 30_000 ? " low" : ""}" data-live-clock="${m.id}" data-colour="${colour}">${formatClock(c[colour])}</span>
     </div>`;
@@ -554,7 +555,53 @@ function groupsTab() {
     ${hasFixtures ? notice("Group fixtures already exist. If you change the groups, generate the fixtures again on the Matches tab.") : ""}
     <div data-err></div>
     <div class="grid sm-2 xl-4 tight">${groups}</div>
+    ${isAdmin ? testPanel() : ""}
   </div>`;
+}
+
+// ---------------------------------------------------------------- testing with bots
+
+// The last test action's outcome stays put through live redraws.
+function showTestMsg(text) {
+  ui.testMsg = text;
+  const el = app.querySelector("[data-test-msg]");
+  if (el) el.innerHTML = notice(text);
+}
+
+function bots() {
+  return store.profiles.filter((p) => p.is_bot);
+}
+
+// Shown on every tab while bots are in, so nobody forgets to clear them.
+function testBanner(tab) {
+  const n = bots().length;
+  if (!n || tab === "groups") return "";
+  return `<div class="test-banner">${icon("robot", "bold")}<span><strong>Test mode:</strong> ${n} bot${n === 1 ? "" : "s"} in the tournament.</span>
+    <a class="btn btn-sm ml-auto" href="#groups">Testing tools ${icon("arrow-right")}</a></div>`;
+}
+
+function testPanel() {
+  const n = bots().length;
+  const empty = store.groups.length * 4 - store.groupPlayers.length;
+  const isBot = (id) => store.profileById.get(id)?.is_bot;
+  const botGames = store.matches.filter((m) => m.status !== "completed" && m.white_id && m.black_id && (isBot(m.white_id) || isBot(m.black_id))).length;
+  return `<section class="panel pad test-panel" id="testing">
+    <div class="row between wrap gap-4">
+      <div><h2 class="section-title">${icon("robot", "bold")} Test with bots</h2>
+        <p class="small muted mt-1" style="max-width:70ch">Rehearse the whole tournament before the real one. Bots are marked <span class="bot-tag">Bot</span> everywhere. When you're done, one click removes every bot and every game they played, and real players' ratings go back to what they were.</p></div>
+      ${n ? `<span class="badge">${n} bots in</span>` : ""}
+    </div>
+    <div class="steps">
+      <div class="step"><span class="num dim xs">01</span><strong>Fill the groups</strong><p class="small muted">Adds a bot to each of the ${empty} empty slot${empty === 1 ? "" : "s"}. Real players already placed keep their slots.</p>
+        <button class="btn btn-primary btn-sm" data-action="fill-bots" ${empty ? "" : "disabled"}>${icon("user-plus", "bold")} Fill ${empty} slot${empty === 1 ? "" : "s"}</button></div>
+      <div class="step"><span class="num dim xs">02</span><strong>Play</strong><p class="small muted">Generate fixtures and schedule a round on the Matches tab. Bots make their own moves in the Arena whenever someone has their game open, so you can also play against them. Or finish everything at once:</p>
+        <label class="row gap-2 xs muted" style="cursor:pointer"><input type="checkbox" id="sim-real" style="accent-color:#d9dce2"> Also finish games between real players</label>
+        <button class="btn btn-sm" data-action="simulate-bots" ${n ? "" : "disabled"}>${icon("lightning", "bold")} Finish ${botGames ? `${botGames} ` : ""}bot games instantly</button></div>
+      <div class="step"><span class="num dim xs">03</span><strong>Clean up</strong><p class="small muted">Removes all bots, their games, the bracket built with them and the updates about those games.</p>
+        <button class="btn btn-danger btn-sm" data-action="remove-bots" ${n ? "" : "disabled"}>${icon("trash", "bold")} Remove all test data</button></div>
+    </div>
+    <div data-test-msg class="mt-4">${ui.testMsg ? notice(ui.testMsg) : ""}</div>
+  </section>`;
 }
 
 function drawModal() {
@@ -793,6 +840,40 @@ app.addEventListener("click", async (e) => {
   switch (el.dataset.action) {
     case "new-edition":
       return newEditionModal();
+    case "fill-bots":
+      return withBusy(el, async () => {
+        const res = await callFunction("admin-users", { action: "fill_bots", tournament_id: t.id });
+        await refresh();
+        showTestMsg(`Added ${res.added} bots. Next: Matches, Generate fixtures, then schedule a round.`);
+      }, app.querySelector("[data-test-msg]"));
+    case "simulate-bots": {
+      const includeReal = app.querySelector("#sim-real")?.checked;
+      return withBusy(el, async () => {
+        const n = await simulateGames(t.id, store.profileById, { includeReal });
+        await refresh();
+        showTestMsg(n ? `Finished ${n} games. Standings, tiebreaks and the bracket updated on their own.` : "No unfinished bot games with both players set. Generate the fixtures first.");
+      }, app.querySelector("[data-test-msg]"));
+    }
+    case "remove-bots": {
+      const d = openModal(
+        "Remove all test data?",
+        `<p class="muted">Every bot account is deleted, with every game a bot played, the knockout bracket and the updates about those games. Real players' ratings are restored.</p>
+         <label class="row gap-3 mt-4" style="cursor:pointer;align-items:flex-start"><input type="checkbox" id="rm-real" checked style="width:1.1rem;height:1.1rem;flex-shrink:0;accent-color:#d9dce2;margin-top:0.2rem"><span class="small"><strong>Also reset games between real players</strong><span class="hint" style="display:block">Puts them back to not started. Leave this on unless real players have already played real games.</span></span></label>
+         <div data-err class="mt-4"></div>
+         <div class="modal-actions"><button class="btn" data-close>Cancel</button><button class="btn btn-danger" data-confirm>${icon("trash", "bold")} Remove test data</button></div>`,
+      );
+      const btn = d.querySelector("[data-confirm]");
+      btn.addEventListener("click", () =>
+        withBusy(btn, async () => {
+          await resetRealTestGames(t.id, store.profileById, { allRealGames: d.querySelector("#rm-real").checked });
+          const res = await callFunction("admin-users", { action: "remove_bots" });
+          d.close();
+          await refresh();
+          showTestMsg(`Removed ${res.removed} bots and ${res.games} games. The tournament is back to real players only.`);
+        }, d.querySelector("[data-err]")),
+      );
+      return;
+    }
     case "activate":
       return withBusy(el, async () => {
         await setActiveTournament(el.dataset.id);

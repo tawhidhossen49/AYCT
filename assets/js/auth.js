@@ -11,7 +11,7 @@ export const isStaff = (role) => role === "admin" || role === "moderator";
 
 // Everything about a person that other members may see. Emails are
 // private: only admins get them, through the admin-users function.
-export const PROFILE_COLUMNS = "id, full_name, role, rating, school, created_at";
+export const PROFILE_COLUMNS = "id, full_name, role, rating, school, created_at, is_bot";
 
 async function loadProfile(userId) {
   const { data } = await supabase.from("profiles").select(PROFILE_COLUMNS).eq("id", userId).maybeSingle();

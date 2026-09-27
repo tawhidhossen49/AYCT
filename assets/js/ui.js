@@ -165,7 +165,12 @@ export function mountFooter() {
 export function playerHtml(id, { me = null, align = "" } = {}) {
   const p = id ? store.profileById.get(id) : null;
   if (!p) return `<span class="dim">To be decided</span>`;
-  return `<span class="player${id === me ? " me" : ""}${align}"><span class="pname">${esc(p.full_name)}</span><span class="rating">${p.rating}</span></span>`;
+  return `<span class="player${id === me ? " me" : ""}${align}"><span class="pname">${esc(p.full_name)}</span>${p.is_bot ? botTag() : ""}<span class="rating">${p.rating}</span></span>`;
+}
+
+// Marks a test bot wherever a name appears.
+export function botTag() {
+  return `<span class="bot-tag" title="Test bot">Bot</span>`;
 }
 
 export const liveTag = () => `<span class="live-tag"><span class="live-dot" aria-hidden="true"></span>Live</span>`;

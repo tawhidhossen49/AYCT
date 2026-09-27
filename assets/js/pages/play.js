@@ -12,7 +12,7 @@ import {
   baseClocks, timeControlLabel,
 } from "../store.js";
 import { countdownHtml, formatClock, formatDateTime, formatTime, serverNow, startCountdowns, syncServerClock } from "../time.js";
-import { emptyState, esc, icon, liveTag, mountShell, notice, openModal, playerHtml, resultText, sectionHead } from "../ui.js";
+import { botTag, emptyState, esc, icon, liveTag, mountShell, notice, openModal, playerHtml, resultText, sectionHead } from "../ui.js";
 import { Chess, Chessground, gameFromMatch, legalDests, mountMiniBoards } from "../board.js";
 import { play as sfx, setSoundEnabled, soundForMove } from "../arena/sounds.js";
 import { analyseGame, classify, evalLabel, winPercent } from "../arena/engine.js";
@@ -81,6 +81,8 @@ const S = {
   goneSince: new Map(),
   viewers: 0,
   hiddenAt: null,
+  botPly: -1, // the position a bot move was last asked for
+  botAt: 0,
   analysis: null,
   analysing: false,
   progress: 0,
@@ -488,7 +490,8 @@ function renderHead() {
 // ---------------------------------------------------------------- players and clocks
 
 function presenceState(id) {
-  if (!S.presence) return "";
+  // Bots play from the server; they're never "in the room".
+  if (!S.presence || store.profileById.get(id)?.is_bot) return "";
   const p = S.presence.get(id);
   if (!p) return "off";
   return p.visible ? "on" : "away";
@@ -514,7 +517,7 @@ function pcardHtml(colour) {
   }
   return `<div class="avatar ${colour}" aria-hidden="true">${esc(initials(name))}${pres ? `<span class="presence ${pres}" title="${pres === "on" ? "Online" : pres === "away" ? "Tab hidden" : "Not here"}"></span>` : ""}</div>
     <div class="who">
-      <div class="line1"><span class="pname">${esc(name)}</span>${p ? `<span class="prating">${p.rating}</span>` : ""}${id === S.profile.id ? `<span class="you">You</span>` : ""}${m.draw_odds && colour === "black" ? `<span class="odds">Draw odds</span>` : ""}</div>
+      <div class="line1"><span class="pname">${esc(name)}</span>${p?.is_bot ? botTag() : ""}${p ? `<span class="prating">${p.rating}</span>` : ""}${id === S.profile.id ? `<span class="you">You</span>` : ""}${m.draw_odds && colour === "black" ? `<span class="odds">Draw odds</span>` : ""}</div>
       <div class="line2"><span class="captured">${caps}</span>${lead > 0 ? `<span class="material">+${lead}</span>` : ""}${note}</div>
     </div>
     <div class="aclock" data-clock="${colour}" role="timer" aria-label="${colour} clock"><i class="ph-bold ph-hourglass-medium"></i><span></span></div>`;
@@ -554,12 +557,30 @@ function tickClocks() {
     if (c[mine] > 12_000) S.lowWarned = false;
   }
 
+  maybeBotMove();
+
   // A player's or the arbiter's screen tells the server when a flag falls
   // (the server also checks every 20 seconds by itself).
   if (running && (mine || staff()) && c[turnColour()] <= 0 && !S.busy && Date.now() - S.lastFlagAt > 3000) {
     S.lastFlagAt = Date.now();
     act("flag", {}, { quiet: true });
   }
+}
+
+// Test bots move when it's their turn and someone has the game open. The
+// server picks the move; watching screens only ask for it, once per turn
+// (again after 5 s if the first request was lost).
+function maybeBotMove() {
+  if (status() !== "live" || paused() || S.busy) return;
+  const id = turnColour() === "white" ? S.match.white_id : S.match.black_id;
+  if (!store.profileById.get(id)?.is_bot) return;
+  const ply = lastPly();
+  if (S.botPly === ply && Date.now() - S.botAt < 5000) return;
+  S.botPly = ply;
+  S.botAt = Date.now();
+  setTimeout(() => {
+    if (lastPly() === ply && S.match.status !== "completed" && !S.busy) act("bot_move", {}, { quiet: true });
+  }, 700 + Math.random() * 900);
 }
 
 // Once a second: the countdown unlock, and disconnection timers.
@@ -596,6 +617,7 @@ function renderOverlay() {
   } else if (status() === "scheduled") {
     kind = "countdown";
     const ready = (id) => {
+      if (store.profileById.get(id)?.is_bot) return `<span class="ready">${botTag()} ${esc(nameOf(id))} is ready</span>`;
       const pres = presenceState(id) || "off";
       return `<span class="ready"><span class="presence ${pres}"></span>${esc(nameOf(id).split(" ")[0])} ${pres === "off" ? "not here yet" : "is here"}</span>`;
     };

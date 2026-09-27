@@ -155,6 +155,48 @@ export async function generateKnockout(tournamentId) {
   check(await supabase.rpc("generate_knockout", { p_tournament: tournamentId }));
 }
 
+// ---------------------------------------------------------------- test bots
+
+const hasBot = (m, profileById) => profileById.get(m.white_id)?.is_bot || profileById.get(m.black_id)?.is_bot;
+
+// Gives every unfinished game with a bot in it (and, if asked, games
+// between real players) a result, the way ratings predict. The database
+// then does what it would after real games: standings, Armageddon
+// tiebreaks, the bracket and advancement. Runs again for each new round
+// until nothing is left to play.
+export async function simulateGames(tournamentId, profileById, { includeReal = false } = {}) {
+  let played = 0;
+  for (let pass = 0; pass < 12; pass++) {
+    const games = check(await supabase.from("matches").select("*").eq("tournament_id", tournamentId).neq("status", "completed"));
+    const todo = games.filter((m) => m.white_id && m.black_id && (includeReal || hasBot(m, profileById)));
+    if (!todo.length) break;
+    for (const m of todo) {
+      const w = profileById.get(m.white_id)?.rating ?? 1000;
+      const b = profileById.get(m.black_id)?.rating ?? 1000;
+      const expected = 1 / (1 + 10 ** ((b - w) / 400));
+      const drawChance = m.stage === "group" ? 0.2 : m.tiebreak_of ? 0.1 : 0.15;
+      const r = Math.random();
+      const result = r < drawChance ? "1/2-1/2" : Math.random() < expected ? "1-0" : "0-1";
+      const when = m.scheduled_at ?? new Date().toISOString();
+      await updateMatch(m.id, { scheduled_at: when, started_at: when, status: "completed", result, end_reason: "test simulation" });
+      played += 1;
+    }
+    // Give the database a moment to build the next round.
+    await new Promise((r) => setTimeout(r, 600));
+  }
+  return played;
+}
+
+// Before bots leave: games between real players that were played during
+// testing go back to the start, which also undoes their rating changes.
+export async function resetRealTestGames(tournamentId, profileById, { allRealGames = false } = {}) {
+  const games = check(await supabase.from("matches").select("*").eq("tournament_id", tournamentId).eq("stage", "group"));
+  const real = games.filter((m) => !hasBot(m, profileById) && (m.status !== "scheduled" || m.move_count > 0));
+  const targets = allRealGames ? real : real.filter((m) => m.end_reason === "test simulation");
+  for (const m of targets) await resetGame(m.id);
+  return targets.length;
+}
+
 // A message from the arbiter to one or more people's updates feed.
 export async function sendMessage(userIds, title, body, link = null) {
   const rows = userIds.map((user_id) => ({ user_id, kind: "message", title, body, link }));
