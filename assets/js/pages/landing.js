@@ -3,13 +3,15 @@
 
 import { supabase } from "../supabase.js";
 import { currentProfile } from "../auth.js";
-import { reduced, hasGsap, initSmoothScroll, animateIn, navAutoHide, progressRing, cursorDot } from "../motion.js";
+import { reduced, hasGsap, initSmoothScroll, getLenis, animateIn, navAutoHide, progressRing, cursorDot } from "../motion.js";
 import { Chessground, Chess } from "../board.js";
 import { loadManifest, createSequence } from "../sequence.js";
 
 const { gsap, ScrollTrigger, SplitText } = window;
+
+// Morphy vs Duke Karl of Brunswick & Count Isouard, Paris 1858.
+const OPERA = "e4 e5 Nf3 d6 d4 Bg4 dxe5 Bxf3 Qxf3 dxe5 Bc4 Nf6 Qb3 Qe7 Nc3 c6 Bg5 b5 Nxb5 cxb5 Bxb5+ Nbd7 O-O-O Rd8 Rxd7 Rxd7 Rd1 Qe6 Bxd7+ Nxd7 Qb8+ Nxb8 Rd8#".split(" ");
 const motion = hasGsap && !reduced;
-const desktop = () => window.matchMedia("(min-width: 900px)").matches;
 
 // ---------------------------------------------------------------- data
 
@@ -47,18 +49,29 @@ navAutoHide();
 progressRing();
 cursorDot();
 
+// The hero film starts downloading right away, while the preloader shows.
+const heroCanvas = document.querySelector(".hv__canvas");
+const heroBase = heroCanvas?.dataset.sequence;
+const heroManifest = motion && heroBase ? await loadManifest(`${heroBase}manifest.json`) : null;
+let reportFilm = () => {};
+const heroSeq = heroManifest
+  ? createSequence({ canvas: heroCanvas, manifest: heroManifest, baseUrl: heroBase, onProgress: (p) => reportFilm(p) })
+  : null;
+
 if (!motion) {
+  // Without motion: the opening over the first frame, nothing pinned.
   document.querySelector(".preloader")?.remove();
-  // Without motion the three captions become one line.
-  const caps = document.querySelectorAll(".hl__cap");
-  caps[0].textContent = "Think. Play. Become legendary.";
-  caps[1].remove();
-  caps[2].remove();
   animateIn();
 } else {
-  await preloader();
+  // A cinematic page always opens at the start of the film.
+  if (!location.hash) {
+    history.scrollRestoration = "manual";
+    window.scrollTo(0, 0);
+  }
+  await preloader(heroSeq);
+  heroCanvas.classList.toggle("is-ready", Boolean(heroSeq));
+  hero(heroSeq);
   heroIntro();
-  heroScroll();
   ticker();
   manifesto();
   road();
@@ -67,26 +80,43 @@ if (!motion) {
   ratingLine();
   ctaAndFooter();
   animateIn();
-  document.fonts.ready.then(() => ScrollTrigger.refresh());
+  document.fonts.ready.then(() => {
+    ScrollTrigger.refresh();
+    goToHash();
+  });
+}
+
+// Links like index.html#faq: the browser jumps before the pinned sections
+// have stretched the page, so go to the section again once they have.
+function goToHash() {
+  const target = location.hash.length > 1 && document.querySelector(location.hash);
+  if (!target) return;
+  const y = target.getBoundingClientRect().top + window.scrollY;
+  const lenis = getLenis();
+  // The smooth scroller measured the page before the pins made it taller.
+  lenis?.resize();
+  if (lenis) lenis.scrollTo(y, { immediate: true, force: true });
+  else window.scrollTo(0, y);
 }
 
 // ---------------------------------------------------------------- preloader
 
-function preloader() {
+// The ring fills with real progress: fonts and the first pass of film
+// frames (every 16th). The rest of the film keeps loading afterwards.
+function preloader(seq) {
   return new Promise((resolve) => {
     const el = document.querySelector(".preloader");
     const bar = el.querySelector(".bar");
     const count = el.querySelector(".preloader__count");
     const length = 389.6;
-    const images = ["assets/brand/rook.webp", "assets/brand/pawn.webp", "assets/brand/logo.png"];
-    const jobs = [document.fonts.ready, ...images.map((src) => new Promise((r) => { const i = new Image(); i.onload = i.onerror = r; i.src = src; }))];
     const shown = { p: 0 };
-    let done = 0;
+    const parts = { base: 0, film: seq ? 0 : 1 };
     let released = false;
 
-    const setTo = (p) =>
+    const paint = () => {
+      const target = parts.base * 0.25 + parts.film * 0.75;
       gsap.to(shown, {
-        p,
+        p: target,
         duration: 0.5,
         ease: "power2.out",
         overwrite: true,
@@ -95,75 +125,110 @@ function preloader() {
           count.textContent = Math.round(shown.p * 100);
         },
       });
+    };
+
+    reportFilm = (p) => {
+      parts.film = p;
+      paint();
+    };
+
+    const basics = [document.fonts.ready, new Promise((r) => { const i = new Image(); i.onload = i.onerror = r; i.src = "assets/sequences/hero/poster.webp"; })];
+    Promise.all(basics).then(() => {
+      parts.base = 1;
+      paint();
+    });
 
     const release = () => {
       if (released) return;
       released = true;
-      setTo(1).then(() =>
-        gsap.to(el, {
-          clipPath: "circle(0% at 50% 50%)",
-          duration: 1.1,
-          ease: "expo.inOut",
-          onComplete: () => {
-            el.remove();
-            resolve();
-          },
-        }),
-      );
+      parts.base = parts.film = 1;
+      gsap.to(shown, {
+        p: 1,
+        duration: 0.4,
+        ease: "power2.out",
+        overwrite: true,
+        onUpdate: () => {
+          bar.style.strokeDashoffset = String(length * (1 - shown.p));
+          count.textContent = Math.round(shown.p * 100);
+        },
+        onComplete: () =>
+          gsap.to(el, {
+            clipPath: "circle(0% at 50% 50%)",
+            duration: 1.1,
+            ease: "expo.inOut",
+            onComplete: () => {
+              el.remove();
+              resolve();
+            },
+          }),
+      });
     };
 
-    jobs.forEach((j) => j.then(() => setTo(++done / (jobs.length + 1))));
-    // Never hold visitors longer than 3 seconds; always show the brand for at least 0.9.
-    Promise.all([Promise.all(jobs), new Promise((r) => setTimeout(r, 900))]).then(release);
-    setTimeout(release, 3000);
+    // At least 0.9s of brand, never more than 4s of waiting.
+    Promise.all([...basics, seq ? seq.firstPass : null, new Promise((r) => setTimeout(r, 900))]).then(release);
+    setTimeout(release, 4000);
   });
 }
 
-// ---------------------------------------------------------------- hero
+// ---------------------------------------------------------------- hero film
 
+function hero(seq) {
+  const stage = document.querySelector(".hv__stage");
+  const mobile = window.matchMedia("(max-width: 899px)").matches;
+  const tl = gsap.timeline({ paused: true });
+
+  // The film itself spans the whole timeline (0 -> 1).
+  if (seq) seq.addTo(tl);
+  else tl.to({}, { duration: 1 }, 0);
+
+  // Opening title lifts away as the camera starts to move.
+  tl.to(".hv__intro", { autoAlpha: 0, y: -60, filter: "blur(10px)", duration: 0.1, ease: "power2.in" }, 0.1);
+
+  // "Think." on the left, then "Play." on the right, each in the side of the
+  // frame the pieces have just left.
+  const chapter = (sel, dir, inAt, outAt) => {
+    const away = mobile ? { y: 30 } : { x: 70 * dir };
+    const leave = mobile ? { y: -24 } : { x: -30 * dir };
+    tl.fromTo(sel, { autoAlpha: 0, filter: "blur(14px)", ...away }, { autoAlpha: 1, x: 0, y: 0, filter: "blur(0px)", duration: 0.07, ease: "power3.out" }, inAt);
+    tl.to(sel, { autoAlpha: 0, filter: "blur(10px)", ...leave, duration: 0.06, ease: "power2.in" }, outAt - 0.06);
+  };
+  chapter(".hv__chapter--left .hv__chapter-inner", -1, 0.31, 0.5);
+  chapter(".hv__chapter--right .hv__chapter-inner", 1, 0.55, 0.75);
+
+  // Finale: "Become" and "Legendary." settle either side of the king.
+  const flankFrom = (dir) => (mobile ? { y: 24 } : { x: 60 * dir });
+  tl.fromTo(".hv__flank--left .hv__flank-inner", { autoAlpha: 0, filter: "blur(14px)", ...flankFrom(-1) }, { autoAlpha: 1, x: 0, y: 0, filter: "blur(0px)", duration: 0.09, ease: "power3.out" }, 0.8)
+    .fromTo(".hv__flank--right .hv__flank-inner", { autoAlpha: 0, filter: "blur(14px)", ...flankFrom(1) }, { autoAlpha: 1, x: 0, y: 0, filter: "blur(0px)", duration: 0.09, ease: "power3.out" }, 0.85);
+
+  tl.fromTo(".hv__progress-fill", { scaleX: 0 }, { scaleX: 1, ease: "none", duration: 1 }, 0);
+
+  // Hold the final frame for the last stretch of scroll, so the finale
+  // always settles before the page moves on.
+  tl.to({}, { duration: 0.14 });
+
+  // Two-way playback: the film follows the scroll, forward going down and
+  // back to its first frame going up. It eases toward the scroll position,
+  // so fast or jerky scrolling still plays smoothly in both directions.
+  const playTo = (p) => gsap.to(tl, { progress: p, duration: 0.9, ease: "power3.out", overwrite: true });
+
+  const st = ScrollTrigger.create({
+    trigger: ".hv",
+    start: "top top",
+    end: `+=${mobile ? 240 : 320}%`,
+    pin: stage,
+    anticipatePin: 1,
+    onUpdate: (self) => playTo(self.progress),
+  });
+  // Opening mid-page (e.g. from a link): show the film where the page is.
+  if (st.progress > 0) tl.progress(st.progress);
+}
+
+// Once the preloader opens: the camera settles and the opening rises in.
 function heroIntro() {
-  const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
-  tl.from(".hl__rook", { xPercent: 18, autoAlpha: 0, filter: "blur(20px)", duration: 1.8, clearProps: "filter" }, 0)
-    .from(".hl__pawn", { xPercent: -18, autoAlpha: 0, filter: "blur(20px)", duration: 1.8, clearProps: "filter" }, 0.1)
-    .from(".hl__ghost", { autoAlpha: 0, duration: 2 }, 0.2)
-    .from("[data-hero-line]", { yPercent: 60, autoAlpha: 0, filter: "blur(12px)", duration: 1.3, stagger: 0.12, clearProps: "filter" }, 0.25)
-    .from(".hl__cap:first-child", { y: 20, autoAlpha: 0, duration: 1 }, 0.55)
-    .from("[data-hero-in]", { y: 24, autoAlpha: 0, duration: 1.1, stagger: 0.1 }, 0.45)
-    .from(".hl__meta", { autoAlpha: 0, duration: 1 }, 0.9);
-}
-
-async function heroScroll() {
-  const stage = document.querySelector(".hl__stage");
-  const caps = gsap.utils.toArray(".hl__cap");
-  const tl = gsap.timeline({
-    scrollTrigger: { trigger: ".hl", start: "top top", end: "+=130%", pin: stage, scrub: 0.6, anticipatePin: 1 },
-  });
-  tl.to(".hl__rook", { yPercent: -14, scale: 1.08, ease: "none", duration: 1 }, 0)
-    .to(".hl__pawn", { yPercent: 12, rotate: -5, ease: "none", duration: 1 }, 0)
-    .to(".hl__ghost", { xPercent: -22, ease: "none", duration: 1 }, 0)
-    .to(".hl__glow", { scale: 1.3, autoAlpha: 0.6, ease: "none", duration: 1 }, 0)
-    .to(".hl__title", { scale: 0.94, ease: "none", duration: 1 }, 0);
-
-  // "Think." then "Play." then "Become legendary."
-  const windows = [[0, 0.3], [0.36, 0.64], [0.7, 1]];
-  caps.forEach((cap, i) => {
-    const [a, b] = windows[i];
-    if (i > 0) tl.fromTo(cap, { autoAlpha: 0, y: 24, filter: "blur(8px)" }, { autoAlpha: 1, y: 0, filter: "blur(0px)", duration: 0.08 }, a);
-    if (b < 1) tl.to(cap, { autoAlpha: 0, y: -20, filter: "blur(6px)", duration: 0.08 }, b - 0.08);
-  });
-
-  // Video slot: once a clip has been extracted, it scrubs with the hero.
-  const canvas = document.querySelector(".hl__seq");
-  const base = canvas?.dataset.sequence;
-  if (base) {
-    const manifest = await loadManifest(`${base}manifest.json`);
-    if (manifest) {
-      const seq = createSequence({ canvas, manifest, baseUrl: base });
-      seq.addTo(tl);
-      canvas.classList.add("is-ready");
-      gsap.set([".hl__rook", ".hl__pawn"], { autoAlpha: 0 });
-    }
-  }
+  gsap.timeline({ defaults: { ease: "expo.out" } })
+    .fromTo([".hv__canvas", ".hv__poster"], { scale: 1.08 }, { scale: 1, duration: 2.4 }, 0)
+    .from("[data-intro]", { y: 34, autoAlpha: 0, filter: "blur(12px)", duration: 1.3, stagger: 0.1, clearProps: "filter" }, 0.2)
+    .from(".hv__progress", { autoAlpha: 0, duration: 1 }, 0.9);
 }
 
 // ---------------------------------------------------------------- ticker
@@ -291,8 +356,6 @@ function ring() {
 
 // ---------------------------------------------------------------- demo board
 
-// Morphy vs Duke Karl of Brunswick & Count Isouard, Paris 1858.
-const OPERA = "e4 e5 Nf3 d6 d4 Bg4 dxe5 Bxf3 Qxf3 dxe5 Bc4 Nf6 Qb3 Qe7 Nc3 c6 Bg5 b5 Nxb5 cxb5 Bxb5+ Nbd7 O-O-O Rd8 Rxd7 Rxd7 Rd1 Qe6 Bxd7+ Nxd7 Qb8+ Nxb8 Rd8#".split(" ");
 
 function setupDemoBoard() {
   const el = document.querySelector("[data-demo-board]");

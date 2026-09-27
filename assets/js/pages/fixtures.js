@@ -1,6 +1,6 @@
-import { store, involves, sortByTime, STAGE_LABEL } from "../store.js";
-import { formatDate } from "../time.js";
-import { emptyState, matchRowHtml, pageHeader } from "../ui.js";
+import { store, involves, sortByTime, effectiveStatus, STAGE_LABEL } from "../store.js";
+import { formatDate, serverNow } from "../time.js";
+import { emptyState, matchRowHtml } from "../ui.js";
 import { startPage } from "../page.js";
 
 const FILTERS = [
@@ -17,8 +17,13 @@ const FILTERS = [
 
 let filter = null;
 
-const { app, draw } = await startPage("fixtures", { render });
-setInterval(draw, 30_000);
+const { app, draw, redrawHero } = await startPage("fixtures", { render, hero });
+// Games go live at their start time without a database change; keep the
+// "live now" counts and labels current.
+setInterval(() => {
+  redrawHero();
+  draw();
+}, 30_000);
 
 app.addEventListener("click", (e) => {
   const chip = e.target.closest("[data-filter]");
@@ -26,6 +31,25 @@ app.addEventListener("click", (e) => {
   filter = chip.dataset.filter;
   draw();
 });
+
+function hero() {
+  const now = serverNow();
+  const count = (st) => store.matches.filter((m) => effectiveStatus(m, now) === st).length;
+  const live = count("live");
+  return {
+    scene: "path",
+    eyebrow: "Every game",
+    bold: "Fixtures",
+    soft: "& results.",
+    lede: "Every game in the tournament, in order. Open any game to watch the board live.",
+    stats: [
+      { value: store.matches.length, label: "Games" },
+      { value: live, label: "Live now", live: live > 0 },
+      { value: count("completed"), label: "Finished" },
+      { value: count("scheduled"), label: "To play" },
+    ],
+  };
+}
 
 function render(profile) {
   const isPlayer = profile.role === "player";
@@ -46,8 +70,7 @@ function render(profile) {
     .map((x) => `<button class="chip${x.id === filter ? " active" : ""}" data-filter="${x.id}" aria-pressed="${x.id === filter}">${x.label}</button>`)
     .join("");
 
-  return `${pageHeader("Fixtures", "Every game in the tournament, in order. Open any game to watch the board.")}
-    <div class="chips" role="toolbar" aria-label="Filter fixtures">${chips}</div>
+  return `<div class="chips" role="toolbar" aria-label="Filter fixtures">${chips}</div>
     ${days.length
       ? `<div class="stack gap-8">${days
           .map((d) => `<section><h2 class="day-heading">${d.label}</h2><div class="panel pad-sm">${d.items.map((m) => matchRowHtml(m, profile.id)).join("")}</div></section>`)

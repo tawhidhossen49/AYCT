@@ -101,13 +101,15 @@ Deno.serve(async (req) => {
     });
 
   const timeoutResult = () => {
-    // Out of time loses, unless the opponent can't possibly mate.
+    // Out of time loses, unless the opponent can't possibly mate: a bare
+    // king, or king with a single bishop or knight, is a draw.
     const opp = turn === "w" ? "b" : "w";
-    const oppHasMaterial = chess
+    const oppPieces = chess
       .board()
       .flat()
-      .some((sq) => sq && sq.color === opp && sq.type !== "k");
-    if (!oppHasMaterial) return finish("1/2-1/2", "timeout vs insufficient material");
+      .filter((sq) => sq && sq.color === opp && sq.type !== "k");
+    const cannotMate = oppPieces.length === 0 || (oppPieces.length === 1 && ["b", "n"].includes(oppPieces[0].type));
+    if (cannotMate) return finish("1/2-1/2", "timeout vs insufficient material");
     finish(turn === "w" ? "0-1" : "1-0", "timeout");
   };
 

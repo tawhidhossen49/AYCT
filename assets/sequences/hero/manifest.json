@@ -1,0 +1,30 @@
+{
+  "name": "hero",
+  "frameCount": 180,
+  "desktop": {
+    "dir": "desktop",
+    "ext": "webp"
+  },
+  "mobile": {
+    "dir": "mobile",
+    "ext": "webp"
+  },
+  "poster": "poster.webp",
+  "edgeColor": "#030303",
+  "edgeColorEnd": "#030303",
+  "source": {
+    "file": "chess video.mp4",
+    "width": 1920,
+    "height": 1080,
+    "fps": 60.0,
+    "trim": [
+      0.0,
+      9.31
+    ]
+  },
+  "possibleCuts": [],
+  "sizeMB": {
+    "desktop": 5.0,
+    "mobile": 1.9
+  }
+}

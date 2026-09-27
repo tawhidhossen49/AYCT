@@ -111,15 +111,33 @@ Only needed if you move to a new project.
    ```
 5. Put the new project URL and anon key in `assets/js/config.js`.
 
-## Adding the hero video later
+## The hero film
 
-The hero is built so a scroll-scrubbed clip can drop in without code changes.
+The landing page hero is a scroll-driven film: the video, split into 180
+WebP frames in `assets/sequences/hero/`, plays forward as visitors scroll
+down and rewinds smoothly to the first frame as they scroll back up. Text appears in the empty parts of the frame:
+the title above the distant king, "Think." on the left, "Play." on the
+right, and "Become / Legendary." either side of the king at the end.
 
-1. Save the clip as `raw-video/hero.mp4`.
-2. Convert it to frames with the 3d-site skill's script:
-   `python <skill-folder>/scripts/extract_frames.py raw-video/hero.mp4 --name hero --out assets/sequences`
-3. In `index.html`, set the hero canvas to `data-sequence="assets/sequences/hero/"`.
+To replace the film with a new clip:
 
-The clip then plays as you scroll through the hero, replacing the chrome pieces.
+1. Put the new video in `Raw-Video/`.
+2. Run the 3d-site skill's script (it overwrites the old frames):
+   `python <skill-folder>/scripts/extract_frames.py "Raw-Video/<file>.mp4" --name hero --out assets/sequences --frames 180`
+3. Refresh the page. If the new clip's composition differs, the text timing
+   lives in `hero()` in `assets/js/pages/landing.js`.
+
+`Raw-Video/` is the source only; the website uses `assets/sequences/hero/`.
 
 Design notes live in `BLUEPRINT.md` and `REDESIGN_PLAN.md`.
+
+## Pending server updates (from the bug-fix pass)
+
+Two database migrations and two function updates are written but not yet
+applied, because the Supabase connection was unavailable:
+
+1. SQL editor: run `supabase/migrations/0003_reverse_ratings_on_delete.sql`.
+2. Redeploy `supabase/functions/game` and `supabase/functions/admin-users`
+   (Dashboard, Edge Functions, open each function, paste the new `index.js`, Deploy;
+   or `npx supabase functions deploy game` and `admin-users`).
+3. Then SQL editor: run `supabase/migrations/0004_private_emails.sql`.

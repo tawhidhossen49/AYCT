@@ -3,14 +3,14 @@
 
 import { ROLE_LABEL } from "../auth.js";
 import { callFunction } from "../supabase.js";
-import { store, loadAll, subscribe, sortByTime, STAGE_LABEL } from "../store.js";
+import { store, loadAll, loadEmails, subscribe, sortByTime, STAGE_LABEL } from "../store.js";
 import { formatDateTime, fromLocalInput, toLocalInput } from "../time.js";
 import { TIEBREAK_NOTE } from "../standings.js";
 import {
   clearGroups, createTournament, generateGroupFixtures, generateKnockout, qualifiers, R16_PAIRINGS,
   resetGame, scheduleRound, seededDraw, setActiveTournament, setGroupSlot, updateMatch, updateTournament,
 } from "../ops.js";
-import { emptyState, esc, icon, modalOpen, notice, openModal, pageHeader, playerHtml, statusHtml, withBusy } from "../ui.js";
+import { emptyState, esc, icon, modalOpen, notice, openModal, playerHtml, statusHtml, withBusy } from "../ui.js";
 import { startPage } from "../page.js";
 import { animateIn } from "../motion.js";
 
@@ -36,7 +36,28 @@ const ROUNDS = [
 // View state that survives redraws.
 const ui = { roleFilter: "all", query: "", round: "g1" };
 
-const { profile, app } = await startPage("admin", { staff: true });
+const { profile, app, redrawHero } = await startPage("admin", { staff: true, hero });
+
+// Header band: compact, with the numbers that matter to organisers.
+function hero(p) {
+  const games = store.matches;
+  return {
+    scene: "path",
+    compact: true,
+    eyebrow: p.role === "admin" ? "Admin" : "Moderator",
+    bold: "Run the",
+    soft: "tournament.",
+    lede:
+      p.role === "admin"
+        ? "Accounts, the draw, fixtures, results and the bracket, all from here."
+        : "The draw, fixtures, results and the bracket. Accounts are managed by admins.",
+    stats: [
+      { value: store.profiles.filter((x) => x.role === "player").length, label: "Players" },
+      { value: store.groupPlayers.length, label: "Drawn" },
+      { value: games.filter((m) => m.scheduled_at).length, label: `of ${games.length} scheduled` },
+    ],
+  };
+}
 const isAdmin = profile.role === "admin";
 
 function currentTab() {
@@ -46,19 +67,19 @@ function currentTab() {
 
 function draw() {
   const tab = currentTab();
-  const subtitle = isAdmin
-    ? "Run the whole tournament from here: accounts, the draw, fixtures, results and the bracket."
-    : "As a moderator you can run the draw, fixtures, results and the bracket. Accounts are managed by admins.";
   const tabs = `<nav class="tabs" aria-label="Admin sections">${TABS.map((t) => `<a class="tab${t.id === tab ? " active" : ""}" href="#${t.id}">${t.label}</a>`).join("")}</nav>`;
   const body = { tournament: tournamentTab, people: peopleTab, groups: groupsTab, matches: matchesTab, knockout: knockoutTab }[tab]();
-  app.innerHTML = pageHeader("Admin", subtitle) + tabs + (store.error ? notice(esc(store.error), "error") : "") + body;
+  app.innerHTML = tabs + (store.error ? notice(esc(store.error), "error") : "") + body;
 }
 
 async function refresh() {
   await loadAll();
+  if (isAdmin) await loadEmails();
+  redrawHero();
   draw();
 }
 
+if (isAdmin) await loadEmails();
 draw();
 animateIn(app);
 window.addEventListener("hashchange", draw);
@@ -141,7 +162,7 @@ function peopleTab() {
   for (const p of store.profiles) counts[p.role] = (counts[p.role] ?? 0) + 1;
   const q = ui.query.toLowerCase();
   const visible = store.profiles.filter(
-    (p) => (ui.roleFilter === "all" || p.role === ui.roleFilter) && (!q || `${p.full_name} ${p.email} ${p.school ?? ""}`.toLowerCase().includes(q)),
+    (p) => (ui.roleFilter === "all" || p.role === ui.roleFilter) && (!q || `${p.full_name} ${p.email ?? ""} ${p.school ?? ""}`.toLowerCase().includes(q)),
   );
   const chips = ["all", ...ROLES]
     .map((r) => `<button class="chip${ui.roleFilter === r ? " active" : ""}" data-action="role-filter" data-role="${r}">${r === "all" ? "Everyone" : `${ROLE_LABEL[r]}s`}<span class="count">${counts[r] ?? 0}</span></button>`)

@@ -1,12 +1,12 @@
-// Frame-sequence engine for a scroll-scrubbed hero video (added later).
+// Frame-sequence engine: draws a video, extracted as numbered WebP frames,
+// onto a canvas, with the frame chosen by scroll.
 //
-// To use a clip: run the 3d-site extract_frames.py script so that
-// assets/sequences/hero/manifest.json and its frames exist. The landing page
-// finds the manifest and scrubs it with the hero; until then it is skipped.
+// Frames come from the 3d-site extract_frames.py script:
+//   assets/sequences/hero/manifest.json, desktop/0001.webp ..., mobile/0001.webp ...
 
 export async function loadManifest(url) {
   try {
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(url, { cache: "no-cache" });
     if (!res.ok) return null;
     return await res.json();
   } catch {
@@ -14,20 +14,23 @@ export async function loadManifest(url) {
   }
 }
 
+const FIRST_PASS_STRIDE = 16;
+
 export function createSequence({ canvas, manifest, baseUrl, onProgress }) {
   const isMobile = window.matchMedia("(max-width: 768px)").matches && manifest.mobile;
   const set = isMobile ? manifest.mobile : manifest.desktop;
   const count = manifest.frameCount;
   const url = (i) => `${baseUrl}${set.dir}/${String(i + 1).padStart(4, "0")}.${set.ext}`;
 
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { alpha: false });
   const images = new Array(count);
   const state = { frame: 0 };
-  let loaded = 0;
+  let drawn = null; // the image currently on the canvas
 
   const ready = (img) => img && img.complete && img.naturalWidth > 0;
 
-  // If the exact frame isn't loaded yet, draw the nearest one that is.
+  // If the exact frame isn't loaded yet, draw the nearest one that is,
+  // preferring earlier frames so the film never jumps ahead.
   function nearest(i) {
     for (let d = 0; d < count; d++) {
       if (ready(images[i - d])) return images[i - d];
@@ -36,15 +39,17 @@ export function createSequence({ canvas, manifest, baseUrl, onProgress }) {
     return null;
   }
 
-  function render() {
-    const img = nearest(Math.round(state.frame));
-    if (!img) return;
+  function render(force = false) {
+    const img = nearest(Math.min(count - 1, Math.max(0, Math.round(state.frame))));
+    if (!img || (img === drawn && !force)) return;
+    drawn = img;
     const cw = canvas.width;
     const ch = canvas.height;
-    const s = Math.max(cw / img.naturalWidth, ch / img.naturalHeight); // cover
+    const s = Math.max(cw / img.naturalWidth, ch / img.naturalHeight); // object-fit: cover
     const w = img.naturalWidth * s;
     const h = img.naturalHeight * s;
-    ctx.clearRect(0, 0, cw, ch);
+    ctx.fillStyle = "#030303";
+    ctx.fillRect(0, 0, cw, ch);
     ctx.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
   }
 
@@ -52,7 +57,8 @@ export function createSequence({ canvas, manifest, baseUrl, onProgress }) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(canvas.clientWidth * dpr);
     canvas.height = Math.round(canvas.clientHeight * dpr);
-    render();
+    ctx.imageSmoothingQuality = "high";
+    render(true);
   }
 
   function load(i) {
@@ -61,37 +67,47 @@ export function createSequence({ canvas, manifest, baseUrl, onProgress }) {
       const img = new Image();
       img.decoding = "async";
       img.onload = img.onerror = () => {
-        loaded++;
-        onProgress?.(loaded / count);
-        res();
+        if (img.decode) img.decode().catch(() => {}).finally(res);
+        else res();
       };
       img.src = url(i);
       images[i] = img;
     });
   }
 
-  // First frame, then coarse-to-fine so scrubbing works early.
-  async function loadAll() {
+  // First frame, then every 16th, then fill in coarse-to-fine, so the film
+  // can be scrubbed early while the rest arrives in the background.
+  let firstPassDone;
+  const firstPass = new Promise((r) => (firstPassDone = r));
+  (async () => {
     await load(0);
-    render();
-    for (const stride of [16, 8, 4, 2, 1]) {
+    render(true);
+    const firstBatch = [];
+    for (let i = 0; i < count; i += FIRST_PASS_STRIDE) firstBatch.push(load(i));
+    let n = 0;
+    firstBatch.forEach((p) => p.then(() => onProgress?.(++n / firstBatch.length)));
+    await Promise.all(firstBatch);
+    render(true);
+    firstPassDone();
+    for (const stride of [8, 4, 2, 1]) {
       const batch = [];
       for (let i = 0; i < count; i += stride) batch.push(load(i));
       await Promise.all(batch);
-      render();
+      render(true);
     }
-  }
+  })();
 
   window.addEventListener("resize", resize);
   resize();
-  loadAll();
 
   return {
     state,
+    count,
     render,
+    firstPass,
     // Adds the frame tween spanning timeline time 0 -> 1.
     addTo(tl) {
-      tl.to(state, { frame: count - 1, snap: "frame", ease: "none", duration: 1, onUpdate: render }, 0);
+      tl.fromTo(state, { frame: 0 }, { frame: count - 1, ease: "none", duration: 1, onUpdate: () => render() }, 0);
       return tl;
     },
   };

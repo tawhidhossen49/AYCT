@@ -1,7 +1,8 @@
 // The whole active edition is small (32 players, 63 games), so each page
 // loads it once and keeps it live with Supabase Realtime.
 
-import { supabase } from "./supabase.js";
+import { supabase, callFunction } from "./supabase.js";
+import { PROFILE_COLUMNS } from "./auth.js";
 
 export const store = {
   tournaments: [],
@@ -17,7 +18,7 @@ export const store = {
 export async function loadAll() {
   const [tRes, pRes] = await Promise.all([
     supabase.from("tournaments").select("*").order("year", { ascending: false }).order("created_at", { ascending: false }),
-    supabase.from("profiles").select("*").order("full_name"),
+    supabase.from("profiles").select(PROFILE_COLUMNS).order("full_name"),
   ]);
   if (tRes.error || pRes.error) {
     store.error = (tRes.error ?? pRes.error).message;
@@ -47,6 +48,20 @@ export async function loadAll() {
   }
 }
 
+// Admins only: adds everyone's email to the loaded profiles.
+export async function loadEmails() {
+  let rows = null;
+  try {
+    rows = (await callFunction("admin-users", { action: "list" })).people;
+  } catch {
+    // Older deployments of the function have no "list"; read the column directly.
+    const { data } = await supabase.from("profiles").select("id, email");
+    rows = data;
+  }
+  const byId = new Map((rows ?? []).map((r) => [r.id, r.email]));
+  store.profiles.forEach((p) => (p.email = byId.get(p.id) ?? ""));
+}
+
 // Applies a saved row straight away, without waiting for realtime.
 export function upsertMatch(m) {
   const i = store.matches.findIndex((x) => x.id === m.id);
@@ -59,28 +74,36 @@ export function upsertMatch(m) {
 
 // Calls onChange whenever something changes. Moves arrive many times a
 // minute, so match rows are patched in place; rarer changes reload all.
+// One live connection per page, shared by every listener.
+const listeners = new Set();
+let channel = null;
+const notify = () => listeners.forEach((fn) => fn());
+
 export function subscribe(onChange) {
+  listeners.add(onChange);
+  if (channel) return;
+
   let timer;
   const reloadSoon = () => {
     clearTimeout(timer);
     timer = setTimeout(async () => {
       await loadAll();
-      onChange();
+      notify();
     }, 300);
   };
 
-  supabase
+  channel = supabase
     .channel("tournament-live")
     .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, (payload) => {
       if (payload.eventType === "DELETE") {
         store.matches = store.matches.filter((m) => m.id !== payload.old.id);
-        onChange();
+        notify();
         return;
       }
       upsertMatch(payload.new);
       // A finished game changes ratings, so names and ratings reload.
       if (payload.new.status === "completed" && payload.old?.status !== "completed") reloadSoon();
-      else onChange();
+      else notify();
     })
     .on("postgres_changes", { event: "*", schema: "public", table: "group_players" }, reloadSoon)
     .on("postgres_changes", { event: "*", schema: "public", table: "tournaments" }, reloadSoon)

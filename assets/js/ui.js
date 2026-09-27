@@ -75,6 +75,73 @@ export function pageHeader(title, subtitle = "", actions = "") {
   </header>`;
 }
 
+// ---------------------------------------------------------------- cinematic pieces (shared with the landing page)
+
+// Full-width page band: a still from the hero film, a label, a two-tone
+// headline, one line of context and live counters.
+//   scene: pieces | path | distant | rising | king
+//   stats: [{ value, label, live? }]
+export function heroHtml({ scene = "king", eyebrow = "", bold, soft = "", lede = "", stats = [], actions = "", compact = false, shift }, { animate = false } = {}) {
+  const stat = (s) =>
+    `<div class="p-stat${s.live ? " live" : ""}"><span class="v"${animate && typeof s.value === "number" ? ` data-count="${s.value}"` : ""}>${esc(s.value)}</span><span class="k">${esc(s.label)}</span></div>`;
+  const long = String(bold).length > 14 ? " long" : "";
+  return `<section class="p-hero${compact ? " compact" : ""}${long}">
+    <div class="p-hero__media" aria-hidden="true"><img src="assets/brand/scenes/${scene}.webp" alt="" width="1920" height="1080"${shift ? ` style="--shift:${shift}"` : ""}></div>
+    <div class="p-hero__shade" aria-hidden="true"></div>
+    <div class="p-hero__inner">
+      ${eyebrow ? `<p class="eyebrow"${animate ? ' data-reveal="load"' : ""}>${eyebrow}</p>` : ""}
+      <h1 class="p-hero__title">
+        <span class="display"${animate ? ' data-split="load"' : ""}>${esc(bold)}</span>
+        ${soft ? `<span class="display-light chrome-text"${animate ? ' data-reveal="load" data-delay="0.2"' : ""}>${esc(soft)}</span>` : ""}
+      </h1>
+      ${lede ? `<p class="p-hero__lede"${animate ? ' data-reveal="load" data-delay="0.3"' : ""}>${lede}</p>` : ""}
+      ${stats.length ? `<div class="p-hero__stats"${animate ? ' data-stagger="load"' : ""}>${stats.map(stat).join("")}</div>` : ""}
+      ${actions ? `<div class="p-hero__actions">${actions}</div>` : ""}
+    </div>
+  </section>`;
+}
+
+// Section head in the landing page's style: label, bold words, light words.
+export function sectionHead(eyebrow, bold, soft = "", aside = "") {
+  return `<div class="s-head">
+    <div>${eyebrow ? `<p class="eyebrow">${esc(eyebrow)}</p>` : ""}<h2>${esc(bold)}${soft ? ` <span class="soft">${esc(soft)}</span>` : ""}</h2></div>
+    ${aside ? `<div class="aside">${aside}</div>` : ""}
+  </div>`;
+}
+
+// The landing page's scrolling band.
+export function tickerHtml(items) {
+  const row = items.map((t, i) => `<span class="ticker__item${i % 2 ? " soft" : ""}">${esc(t)} <img src="assets/brand/logo.png" alt=""></span>`).join("");
+  return `<div class="ticker" aria-hidden="true"><div class="ticker__track">${row}${row}</div></div>`;
+}
+
+// The landing page's footer, with the giant wordmark.
+export function mountFooter() {
+  const f = document.createElement("footer");
+  f.className = "footer portal";
+  f.innerHTML = `
+    <div class="footer__cols">
+      <div>
+        <img src="assets/brand/logo.png" alt="" width="44" height="44">
+        <p class="mt-4 muted" style="max-width:32ch">The annual Amaze Youth Chess Tournament. Think. Play. Become legendary.</p>
+      </div>
+      <div>
+        <h4>Portal</h4>
+        <ul><li><a href="home.html">Home</a></li><li><a href="fixtures.html">Fixtures</a></li><li><a href="groups.html">Groups</a></li><li><a href="bracket.html">Bracket</a></li><li><a href="leaderboard.html">Leaderboard</a></li></ul>
+      </div>
+      <div>
+        <h4>Tournament</h4>
+        <ul><li><a href="index.html">About the tournament</a></li><li><a href="index.html#format">Format</a></li><li><a href="index.html#faq">FAQ</a></li></ul>
+      </div>
+    </div>
+    <div class="footer__base"><span>© ${esc(store.tournament?.year ?? new Date().getFullYear())} Amaze Youth Chess Tournament</span><span>Think. Play. Become legendary.</span></div>
+    <p class="footer__word" aria-hidden="true">${[..."Amaze"].map((c) => `<span>${c}</span>`).join("")}</p>`;
+  const tabbar = document.querySelector(".tabbar");
+  if (tabbar) tabbar.before(f);
+  else document.body.append(f);
+  return f;
+}
+
 // ---------------------------------------------------------------- small pieces
 
 export function playerHtml(id, { me = null, align = "" } = {}) {
@@ -110,7 +177,7 @@ export function matchRowHtml(m, me = null) {
 }
 
 export function emptyState(title, body, action = "") {
-  return `<div class="panel lit empty"><h3>${esc(title)}</h3><p>${esc(body)}</p>${action ? `<div class="actions">${action}</div>` : ""}</div>`;
+  return `<div class="panel empty"><h3>${esc(title)}</h3><p>${esc(body)}</p>${action ? `<div class="actions">${action}</div>` : ""}</div>`;
 }
 
 export const notice = (text, tone = "") => `<div class="notice ${tone}" role="${tone === "error" ? "alert" : "status"}">${text}</div>`;

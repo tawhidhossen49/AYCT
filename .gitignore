@@ -1,3 +1,6 @@
 .DS_Store
 *.log
 .vscode/
+Raw-Video/
+raw-video/
+assets/sequences/*/_qa/

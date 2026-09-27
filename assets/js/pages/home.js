@@ -1,61 +1,151 @@
 import { isStaff } from "../auth.js";
 import { store, effectiveStatus, involves, sortByTime, matchContext, STAGE_LABEL } from "../store.js";
 import { countdownHtml, formatDateTime, serverNow } from "../time.js";
-import { esc, emptyState, groupTableHtml, icon, liveTag, matchRowHtml, playerHtml } from "../ui.js";
+import { esc, groupTableHtml, icon, liveTag, matchRowHtml, playerHtml, sectionHead } from "../ui.js";
 import { mountMiniBoards } from "../board.js";
 import { startPage } from "../page.js";
 
-const { app, draw } = await startPage("home", { render });
+const STATUS_LINE = {
+  setup: "The organisers are setting up this year's edition.",
+  groups: "Group stage in progress. The top two in each group go through.",
+  knockout: "Knockout stage. One game, one winner, every round.",
+  complete: "The tournament is complete. A champion has been crowned.",
+};
+
+const { app, draw, redrawHero } = await startPage("home", { render, hero, ticker });
 mountMiniBoards(app);
 
-// Keep "live" and "in 2h" labels fresh, and redraw boards after updates.
-setInterval(draw, 15_000);
+// Keep "live" and "in 2h" labels fresh (games go live at their start time
+// without any database change), and redraw boards after updates.
+setInterval(() => {
+  redrawHero();
+  draw();
+}, 15_000);
 new MutationObserver(() => mountMiniBoards(app)).observe(app, { childList: true });
 
-function render(profile) {
-  if (!store.tournament) {
-    return isStaff(profile.role)
-      ? emptyState("No tournament yet", "Create this year's edition to start adding players, drawing groups and scheduling games.", `<a class="btn btn-primary" href="admin.html#tournament">Set up the tournament</a>`)
-      : emptyState("The tournament isn't set up yet", "Check back soon. Your group and fixtures will appear here once the organisers publish them.");
+
+// "Amaze Youth Chess Tournament 2026" -> bold "Amaze Youth Chess", light "Tournament 2026".
+function splitName(name) {
+  const i = name.toLowerCase().lastIndexOf("tournament");
+  return i > 0 ? [name.slice(0, i).trim(), name.slice(i)] : [name, ""];
+}
+
+// ---------------------------------------------------------------- header band
+
+function hero(profile) {
+  const first = esc(profile.full_name.split(" ")[0]);
+  const t = store.tournament;
+  if (!t) {
+    return {
+      scene: "king",
+      eyebrow: `Welcome back, ${first}`,
+      bold: "The board",
+      soft: "is set.",
+      lede: isStaff(profile.role)
+        ? "Create this year's edition to start adding players, drawing groups and scheduling games."
+        : "The organisers are preparing this year's tournament. Your group and fixtures will appear here soon.",
+      actions: isStaff(profile.role)
+        ? `<a class="btn btn-primary btn-lg" href="admin.html#tournament" data-magnetic>Set up the tournament ${icon("arrow-right", "bold")}</a>`
+        : "",
+    };
   }
+
+  const now = serverNow();
+  const [bold, soft] = splitName(t.name);
+  const live = store.matches.filter((m) => effectiveStatus(m, now) === "live").length;
+  const played = store.matches.filter((m) => m.status === "completed").length;
+  const entrants = store.groupPlayers.length || store.profiles.filter((p) => p.role === "player").length;
+  let lede = STATUS_LINE[t.status];
+  let actions = "";
+
+  if (profile.role === "player") {
+    const next = store.matches
+      .filter((m) => involves(m, profile.id) && effectiveStatus(m, now) !== "completed" && m.scheduled_at)
+      .sort(sortByTime)[0];
+    if (next) {
+      const opp = store.profileById.get(next.white_id === profile.id ? next.black_id : next.white_id);
+      lede = `Your next game: ${opp ? `against ${esc(opp.full_name)}` : "opponent to be decided"}, ${formatDateTime(next.scheduled_at)}.`;
+      actions = `<a class="btn btn-primary btn-lg" href="match.html?id=${next.id}" data-magnetic>Open your board ${icon("arrow-right", "bold")}</a>`;
+    }
+  }
+
+  return {
+    scene: "king",
+    shift: "26%",
+    eyebrow: `Welcome back, ${first}`,
+    bold,
+    soft,
+    lede,
+    actions,
+    stats: [
+      { value: entrants, label: "Players" },
+      { value: live, label: "Live now", live: live > 0 },
+      { value: played, label: `of ${store.matches.length || 63} games played` },
+    ],
+  };
+}
+
+function ticker() {
+  const t = store.tournament;
+  return [t?.name ?? "Amaze Youth Chess Tournament", "32 Players", "8 Groups", "63 Games", "One Champion", "Think. Play. Become legendary."];
+}
+
+// ---------------------------------------------------------------- content
+
+function render(profile) {
+  if (!store.tournament) return isStaff(profile.role) ? firstSteps() : "";
 
   const now = serverNow();
   const live = store.matches.filter((m) => effectiveStatus(m, now) === "live").sort(sortByTime);
   const upcoming = store.matches.filter((m) => effectiveStatus(m, now) === "scheduled" && m.scheduled_at).sort(sortByTime);
 
-  return `<div class="stack gap-12">
-    <header class="welcome">
-      <span class="ghost" aria-hidden="true">${store.tournament.year}</span>
-      <p class="eyebrow" data-reveal="load">Welcome back, ${esc(profile.full_name.split(" ")[0])}</p>
-      <h1 class="display" data-split="load">${esc(store.tournament.name)}</h1>
-    </header>
-    ${store.tournament.status === "complete" ? champion() : ""}
-    ${profile.role === "player" ? playerSection(profile) : ""}
-    ${isStaff(profile.role) ? checklist() : ""}
+  return `<div>
+    ${store.tournament.status === "complete" ? `<section class="s-block">${champion()}</section>` : ""}
+    ${profile.role === "player" ? `<section class="s-block">${sectionHead("Your tournament", "Next", "up.")}${playerSection(profile)}</section>` : ""}
+    ${isStaff(profile.role) ? `<section class="s-block">${sectionHead("Organiser", "Tournament", "setup.", "Work through these in order. Each step opens the right admin tab.")}${checklist()}</section>` : ""}
 
-    <section>
-      <div class="row gap-3 mb-4"><h2 class="section-title">Live now</h2>${live.length ? `<span class="num small dim">${live.length}</span>` : ""}</div>
-      ${live.length ? `<div class="grid sm-2 lg-4" data-stagger>${live.map(liveCard).join("")}</div>` : `<p class="muted">No games are being played right now.</p>`}
+    <section class="s-block">
+      ${sectionHead("On the boards", "Live", "now.", live.length ? `${live.length} game${live.length === 1 ? "" : "s"} in progress. Open one to watch.` : "")}
+      ${live.length ? `<div class="grid sm-2 lg-4" data-stagger>${live.map(liveCard).join("")}</div>` : `<div class="panel pad muted">No games are being played right now.</div>`}
     </section>
 
-    <section>
-      <div class="row between mb-3">
-        <h2 class="section-title">Coming up</h2>
-        <a href="fixtures.html" class="small muted row gap-1">All fixtures ${icon("arrow-right")}</a>
-      </div>
-      ${upcoming.length ? `<div class="panel pad-sm">${upcoming.slice(0, 6).map((m) => matchRowHtml(m, profile.id)).join("")}</div>` : `<p class="muted">Nothing scheduled yet.</p>`}
+    <section class="s-block">
+      ${sectionHead("Schedule", "Coming", "up.", `<a href="fixtures.html" class="btn btn-sm">All fixtures ${icon("arrow-right")}</a>`)}
+      ${upcoming.length ? `<div class="panel pad-sm">${upcoming.slice(0, 6).map((m) => matchRowHtml(m, profile.id)).join("")}</div>` : `<div class="panel pad muted">Nothing scheduled yet.</div>`}
     </section>
   </div>`;
+}
+
+// Before any edition exists: the three first steps, as cards.
+function firstSteps() {
+  const steps = [
+    { n: "01", title: "Create the edition", body: "Name this year's tournament and set the clock. Eight empty groups are made for you.", href: "admin.html#tournament", cta: "Create edition" },
+    { n: "02", title: "Add the players", body: "Give each of the 32 players, moderators and commentators an email and password.", href: "admin.html#people", cta: "Add people" },
+    { n: "03", title: "Run the draw", body: "A seeded draw places one player from each rating pot into every group.", href: "admin.html#groups", cta: "Open the draw" },
+  ];
+  return `<section class="s-block">
+    ${sectionHead("Getting started", "Three steps", "to the first move.")}
+    <div class="grid lg-3" data-stagger="load">${steps
+      .map(
+        (s) => `<a class="panel lit pad step-card" href="${s.href}">
+          <span class="num dim">${s.n}</span>
+          <h3>${s.title}</h3>
+          <p class="muted">${s.body}</p>
+          <span class="btn btn-sm mt-6">${s.cta} ${icon("arrow-right")}</span>
+        </a>`,
+      )
+      .join("")}</div>
+  </section>`;
 }
 
 function champion() {
   const final = store.matches.find((m) => m.stage === "final");
   const p = final?.winner_id ? store.profileById.get(final.winner_id) : null;
   if (!p) return "";
-  return `<div class="panel pad">
+  return `<div class="panel lit pad champion">
     <i class="ph-fill ph-crown" style="font-size:28px;color:var(--chrome)"></i>
-    <p class="muted mt-4">Champion</p>
-    <p class="display chrome-text mt-1" style="font-size:var(--text-2xl);padding-bottom:0.25rem">${esc(p.full_name)}</p>
+    <p class="eyebrow mt-4">Champion</p>
+    <p class="display chrome-text mt-2" style="font-size:clamp(2rem,5vw,4rem);padding-bottom:0.25rem">${esc(p.full_name)}</p>
   </div>`;
 }
 
@@ -73,23 +163,23 @@ function playerSection(profile) {
     ${nextGameHero(next, Boolean(liveGame), profile)}
     <div class="stack gap-6">
       ${myGroup ? groupTableHtml(myGroup, { me: profile.id, compact: true }) : ""}
-      ${played.length ? `<section class="panel pad-sm"><h3 class="small strong muted" style="padding:0.75rem 1rem 0.25rem">Your results</h3>${played.map((m) => matchRowHtml(m, profile.id)).join("")}</section>` : ""}
+      ${played.length ? `<section class="panel pad-sm"><h3 class="eyebrow" style="padding:0.85rem 1rem 0.35rem">Your results</h3>${played.map((m) => matchRowHtml(m, profile.id)).join("")}</section>` : ""}
     </div>
   </div>`;
 }
 
 function nextGameHero(m, live, profile) {
-  const art = `<img class="art" src="assets/brand/pawn.webp" alt="" aria-hidden="true">`;
+  const art = `<img class="art" src="assets/brand/scenes/rising.webp" alt="" aria-hidden="true">`;
   if (!m) {
-    return `<div class="panel hero" style="justify-content:flex-end">${art}
+    return `<div class="panel lit hero" style="justify-content:flex-end">${art}
       <i class="ph ph-hourglass dim" style="font-size:28px"></i>
-      <h2 class="mt-4" style="font-size:var(--text-lg);font-weight:600">No game scheduled for you yet</h2>
+      <h3 class="hero-empty-title mt-4">No game scheduled yet</h3>
       <p class="muted mt-2" style="max-width:44ch">When the organisers set your next game, the countdown will start here.</p>
     </div>`;
   }
   const white = m.white_id === profile.id;
   return `<div class="panel lit hero" data-reveal="load" data-delay="0.2">${art}
-    <div class="row gap-3">${live ? liveTag() : `<span class="small muted">Your next game</span>`}<span class="small dim">${esc(matchContext(m))}</span></div>
+    <div class="row gap-3">${live ? liveTag() : `<span class="eyebrow">Your next game</span>`}<span class="small dim">${esc(matchContext(m))}</span></div>
     <div class="mt-6">
       <p class="small muted">You play ${white ? "white" : "black"} against</p>
       <p class="opponent">${playerHtml(white ? m.black_id : m.white_id)}</p>
@@ -122,11 +212,8 @@ function checklist() {
     { label: "Champion crowned", detail: store.tournament.status === "complete" ? "Done" : "Pending", done: store.tournament.status === "complete", href: "bracket.html" },
   ];
   const next = steps.find((s) => !s.done);
-  return `<section class="panel lit pad" data-reveal="load" data-delay="0.2">
-    <div class="split">
-      <h2 class="section-title">Tournament setup</h2>
-      ${next ? `<a class="btn btn-primary btn-sm" href="${next.href}">Next: ${next.label.toLowerCase()} <i class="ph-bold ph-arrow-right"></i></a>` : ""}
-    </div>
+  return `<div class="panel lit pad" data-reveal="load" data-delay="0.2">
+    ${next ? `<div class="row between wrap gap-4"><p class="muted">Next step: <strong style="color:var(--fg)">${next.label}</strong></p><a class="btn btn-primary btn-sm" href="${next.href}">Continue <i class="ph-bold ph-arrow-right"></i></a></div>` : ""}
     <ol class="checklist">${steps
       .map(
         (s) => `<li><a href="${s.href}">
@@ -135,7 +222,7 @@ function checklist() {
         </a></li>`,
       )
       .join("")}</ol>
-  </section>`;
+  </div>`;
 }
 
 // ---------------------------------------------------------------- live boards

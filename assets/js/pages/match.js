@@ -9,10 +9,28 @@ import { countdownHtml, formatClock, formatDateTime, formatTime, serverNow } fro
 import { emptyState, esc, icon, liveTag, notice, openModal, resultText } from "../ui.js";
 import { Chessground, gameFromMatch, legalDests } from "../board.js";
 import { startPage } from "../page.js";
-import { animateIn } from "../motion.js";
+import { animateIn, getLenis, reduced } from "../motion.js";
 
 const matchId = new URLSearchParams(location.search).get("id");
-const { profile, app } = await startPage("fixtures");
+const { profile, app } = await startPage("fixtures", { hero: matchHero });
+
+// Compact header band: the two players over the rising king.
+function matchHero() {
+  const m = store.matches.find((x) => x.id === matchId);
+  if (!m) return { scene: "rising", compact: true, eyebrow: "Game", bold: "Game", soft: "not found." };
+  const name = (id) => store.profileById.get(id)?.full_name ?? "To be decided";
+  const when = m.scheduled_at ? formatDateTime(m.scheduled_at) : "Not scheduled";
+  const result = m.status === "completed" && m.result ? (m.result === "1/2-1/2" ? "½ - ½" : m.result.replace("-", " - ")) : null;
+  return {
+    scene: "rising",
+    compact: true,
+    eyebrow: esc(matchContext(m)),
+    bold: name(m.white_id),
+    soft: `vs ${name(m.black_id)}`,
+    lede: esc(when),
+    stats: result ? [{ value: result, label: m.end_reason ? `by ${m.end_reason}` : "Result" }] : [],
+  };
+}
 
 let match = store.matches.find((m) => m.id === matchId);
 let game = null;       // chess.js instance for the current position
@@ -20,7 +38,7 @@ let cg = null;         // chessground board
 let flipped = false;
 let busy = null;       // the action being sent, if any
 let pending = false;   // our move is on its way to the server
-let flagSentFor = null;
+let lastFlagAt = 0; // when we last told the server a clock ran out
 const canPost = profile.role === "commentator" || isStaff(profile.role);
 let comments = [];
 
@@ -30,6 +48,15 @@ if (!match) {
   layout();
   update();
   animateIn(app);
+  // Players come to play: bring their board fully into view.
+  if (myColour()) {
+    setTimeout(() => {
+      const y = document.querySelector(".board-col").getBoundingClientRect().top + window.scrollY - 92;
+      const lenis = getLenis();
+      if (lenis) lenis.scrollTo(y, { duration: 1.2 });
+      else window.scrollTo({ top: y, behavior: reduced ? "auto" : "smooth" });
+    }, 700);
+  }
   loadComments();
   // Realtime: redraw when this game changes.
   subscribe(() => {
@@ -84,7 +111,7 @@ function layout() {
     <div class="grid lg-board">
       <div class="board-col">
         <div class="player-bar" id="bar-top"></div>
-        <div class="board-frame" data-reveal="load">
+        <div class="board-frame">
           <div class="board" id="board"></div>
           <div class="board-overlay" id="overlay" hidden></div>
         </div>
@@ -119,6 +146,14 @@ function layout() {
     draggable: { showGhost: true },
     movable: { free: false, showDests: true, events: { after: onMove } },
   });
+
+  // Chessground remembers where the board sits on screen, but animations and
+  // the header band can move it without a scroll or resize. Re-measure at
+  // the start of every press, so clicks always land on the right square.
+  const boardEl = document.getElementById("board");
+  const remeasure = () => cg.state.dom.bounds.clear();
+  ["mousedown", "touchstart", "pointerdown"].forEach((type) => boardEl.addEventListener(type, remeasure, { capture: true, passive: true }));
+  document.fonts?.ready.then(() => cg.redrawAll());
 
   document.getElementById("flip").addEventListener("click", () => {
     flipped = !flipped;
@@ -198,10 +233,11 @@ function tick() {
   // A player's or staff member's screen tells the server, so a game with an
   // absent player still ends.
   const canFlag = Boolean(myColour()) || isStaff(profile.role);
-  const key = `${match.id}:${match.move_count}`;
-  if (live && canFlag && c[turnColour()] <= 0 && flagSentFor !== key) {
-    flagSentFor = key;
-    act("flag");
+  // Our clock and the server's can differ by a moment, so if the server
+  // says there's still time, try again shortly rather than giving up.
+  if (live && canFlag && c[turnColour()] <= 0 && !busy && Date.now() - lastFlagAt > 3000) {
+    lastFlagAt = Date.now();
+    act("flag", {}, { quiet: true });
   }
 
   // The board unlocks by itself when the countdown ends.
@@ -278,15 +314,16 @@ function renderMoves(sans) {
 
 // ---------------------------------------------------------------- actions
 
-async function act(action, extra = {}) {
+// quiet: background actions (the timeout claim) never show errors.
+async function act(action, extra = {}, { quiet = false } = {}) {
   busy = action;
-  document.getElementById("error").innerHTML = "";
+  if (!quiet) document.getElementById("error").innerHTML = "";
   try {
     const res = await callFunction("game", { action, match_id: match.id, ...extra });
     upsertMatch(res.match);
     match = res.match;
   } catch (err) {
-    document.getElementById("error").innerHTML = notice(esc(err.message), "error");
+    if (!quiet) document.getElementById("error").innerHTML = notice(esc(err.message), "error");
   } finally {
     busy = null;
     pending = false;

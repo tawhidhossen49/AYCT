@@ -1,7 +1,7 @@
 import { store, effectiveStatus, STAGE_LABEL } from "../store.js";
 import { formatDate, formatTime, serverNow } from "../time.js";
 import { R16_PAIRINGS } from "../ops.js";
-import { emptyState, esc, liveTag, pageHeader, resultText } from "../ui.js";
+import { emptyState, esc, liveTag, resultText } from "../ui.js";
 import { startPage } from "../page.js";
 
 const COLUMNS = ["r16", "qf", "sf", "final"];
@@ -11,11 +11,28 @@ const COLUMNS = ["r16", "qf", "sf", "final"];
 const CARD_H = 76;
 const GAP = 16;
 
-const { draw } = await startPage("bracket", { render });
+const { draw } = await startPage("bracket", { render, hero });
 setInterval(draw, 30_000);
 
+function hero() {
+  const ko = store.matches.filter((m) => m.stage !== "group");
+  const decided = ko.filter((m) => m.winner_id).length;
+  return {
+    scene: "rising",
+    eyebrow: "Knockout",
+    bold: "The road",
+    soft: "to the crown.",
+    lede: "Single games from the round of 16 to the final. Group winners play white against a runner-up from the neighbouring group.",
+    stats: [
+      { value: ko.length ? 16 - decided : 16, label: "Players left" },
+      { value: decided, label: `of ${ko.length || 15} decided` },
+      { value: 4, label: "Rounds" },
+    ],
+  };
+}
+
 function render() {
-  const header = pageHeader("Bracket", "Single games from the round of 16 to the final. Group winners play white and face a runner-up from the neighbouring group.");
+  const header = "";
   const knockout = store.matches.filter((m) => m.stage !== "group");
 
   if (!knockout.length) {

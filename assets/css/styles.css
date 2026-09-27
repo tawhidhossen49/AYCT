@@ -906,7 +906,8 @@ select.input option { background: var(--graphite); }
 
 /* ---------------------------------------------------------------- match page */
 
-.board-col { width: 100%; max-width: 660px; margin: 0 auto; position: relative; }
+/* The whole board and both clocks always fit on one screen. */
+.board-col { width: 100%; max-width: min(660px, calc(100svh - 16.5rem)); min-width: min(100%, 300px); margin: 0 auto; position: relative; }
 .board-col::before {
   content: "";
   position: absolute;
@@ -1078,18 +1079,20 @@ dialog.modal::backdrop { background: rgb(4 4 6 / 0.7); -webkit-backdrop-filter: 
   .login { place-items: center start; padding: 0 0 0 max(4vw, calc((100vw - 1280px) / 2)); }
 }
 .login-art { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.login-art { background: #030303; }
 .login-art img {
   position: absolute;
-  right: -8%;
-  top: -12%;
-  height: 150%;
-  width: auto;
-  max-width: none;
-  opacity: 0.35;
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 40%);
-  mask-image: linear-gradient(to right, transparent 0%, black 40%);
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 60%;
+  opacity: 0.45;
 }
-@media (min-width: 1024px) { .login-art img { opacity: 1; right: -4%; } }
+@media (min-width: 1024px) {
+  .login-art img { opacity: 1; transform: translateX(20%); }
+  .login-art::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to right, #030303 25%, rgb(3 3 3 / 0) 60%), linear-gradient(to top, #030303, transparent 30%); }
+}
 .login-art .ghost { position: absolute; left: 50%; bottom: -0.12em; translate: -50% 0; font-size: 22vw; }
 .login-card {
   position: relative;
@@ -1100,8 +1103,7 @@ dialog.modal::backdrop { background: rgb(4 4 6 / 0.7); -webkit-backdrop-filter: 
   border-radius: var(--r-xl);
 }
 @media (min-width: 640px) { .login-card { padding: 2.75rem; } }
-.login-title { font-size: clamp(1.45rem, 2.2vw, 1.85rem); margin-top: 1.5rem; }
-.login-title .display { white-space: nowrap; }
+.login-title { font-size: clamp(1.3rem, 1.9vw, 1.5rem); margin-top: 1.5rem; }
 .login-title .display, .login-title .display-light { display: block; }
 .login-title .display-light { margin-top: 0.45rem; }
 .login-form { margin-top: 2.25rem; display: flex; flex-direction: column; gap: 1.2rem; }
@@ -1109,3 +1111,185 @@ dialog.modal::backdrop { background: rgb(4 4 6 / 0.7); -webkit-backdrop-filter: 
 .back-link { position: fixed; top: 1.4rem; left: 1.5rem; z-index: 5; display: inline-flex; align-items: center; gap: 0.6rem; font-size: var(--text-sm); font-weight: 700; color: var(--fg-muted); }
 .back-link:hover { color: var(--fg); }
 .back-link img { width: 30px; height: 30px; }
+
+/* ================================================================
+   Shared with the landing page: ticker and wordmark footer
+   ================================================================ */
+
+/* ---------------------------------------------------------------- ticker */
+
+.ticker {
+  position: relative;
+  overflow: hidden;
+  white-space: nowrap;
+  border-block: 1px solid var(--edge);
+  background: rgb(255 255 255 / 0.02);
+  padding: 1.35rem 0;
+}
+.ticker__track { display: inline-flex; align-items: center; gap: 3rem; will-change: transform; }
+.ticker__item { display: inline-flex; align-items: center; gap: 3rem; font-family: var(--font-display); font-stretch: 125%; font-weight: 800; font-size: clamp(1.2rem, 2.4vw, 2rem); text-transform: uppercase; }
+.ticker__item.soft { font-weight: 300; color: var(--fg-muted); }
+.ticker__item img { width: 26px; height: 26px; opacity: 0.8; }
+
+/* ---------------------------------------------------------------- footer */
+
+.footer { position: relative; overflow: hidden; border-top: 1px solid var(--edge); padding-top: 5rem; }
+.footer__cols { width: var(--container); margin: 0 auto; display: grid; gap: 2.5rem; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 768px) { .footer__cols { grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)); } }
+.footer h4 { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 500; letter-spacing: 0.22em; text-transform: uppercase; color: var(--fg-dim); margin-bottom: 1rem; }
+.footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+.footer a { color: var(--fg-muted); transition: color var(--fast); }
+.footer a:hover { color: var(--fg); }
+.footer__word {
+  margin-top: 3rem;
+  font-family: var(--font-display);
+  font-stretch: 125%;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 17.5vw;
+  line-height: 0.74;
+  letter-spacing: -0.04em;
+  text-align: center;
+  white-space: nowrap;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.9), rgb(255 255 255 / 0.05) 85%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: -0.17em;
+}
+/* Each letter animates on its own, so each carries the gradient itself. */
+.footer__word span {
+  display: inline-block;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.9), rgb(255 255 255 / 0.05) 85%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.footer__base { width: var(--container); margin: 3.5rem auto 0; padding-top: 1.5rem; border-top: 1px solid var(--edge); display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; font-size: var(--text-xs); color: var(--fg-dim); }
+
+/* ================================================================
+   Portal: cinematic page header, section heads, scenery
+   ================================================================ */
+
+/* Full-width band under the nav: a still from the hero film, a label,
+   a two-tone headline, one line of context and live counters. */
+.p-hero {
+  position: relative;
+  overflow: hidden;
+  min-height: clamp(440px, 64svh, 660px);
+  display: flex;
+  align-items: flex-end;
+  background: #030303;
+  isolation: isolate;
+}
+.p-hero.compact { min-height: clamp(320px, 42svh, 440px); }
+.p-hero__media { position: absolute; inset: 0; z-index: -2; }
+.p-hero__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 58%;
+  transform: translateX(var(--shift, 16%)) scale(1.08);
+  transform-origin: 50% 60%;
+  will-change: transform;
+}
+@media (max-width: 767px) {
+  .p-hero__media img { transform: translateX(0) scale(1.08); object-position: 50% 60%; opacity: 0.75; }
+}
+.p-hero__shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(to bottom, rgb(3 3 3 / 0.8) 0%, rgb(3 3 3 / 0) 26%),
+    linear-gradient(to right, rgb(3 3 3 / 0.92) 0%, rgb(3 3 3 / 0.55) 42%, rgb(3 3 3 / 0) 72%),
+    linear-gradient(to top, var(--void) 0%, rgb(7 7 10 / 0) 34%);
+}
+.p-hero__inner {
+  width: var(--container);
+  margin: 0 auto;
+  padding: calc(var(--nav-h) + 4rem) 0 3.25rem;
+}
+.p-hero__title { margin-top: 1.4rem; font-size: clamp(2.3rem, 6vw, 5.6rem); }
+.p-hero.compact .p-hero__title { font-size: clamp(1.8rem, 4.2vw, 3.8rem); }
+/* Long names (e.g. the full tournament name) step down a size to stay clear of the king. */
+.p-hero.long .p-hero__title { font-size: clamp(2rem, 4.6vw, 4.4rem); }
+.p-hero.compact.long .p-hero__title { font-size: clamp(1.7rem, 3.6vw, 3.3rem); }
+.p-hero__title .display,
+.p-hero__title .display-light { display: block; }
+.p-hero__title .display-light { margin-top: 0.1em; font-size: 0.78em; }
+.p-hero__lede { margin-top: 1.25rem; max-width: 54ch; color: var(--fg-muted); font-size: clamp(0.98rem, 1.2vw, 1.1rem); }
+.p-hero__stats { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
+.p-stat {
+  min-width: 7.5rem;
+  padding: 0.85rem 1.1rem 0.8rem;
+  border: 1px solid var(--edge-2);
+  border-radius: var(--r-md);
+  background: rgb(10 10 13 / 0.55);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07);
+}
+.p-stat .v { display: block; font-family: var(--font-mono); font-weight: 600; font-size: 1.7rem; line-height: 1.05; }
+.p-stat .k { display: block; margin-top: 0.3rem; font-family: var(--font-mono); font-size: 0.64rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--fg-dim); }
+.p-stat.live .v { color: var(--signal); }
+.p-hero__actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
+
+/* Pages that have a band start their content closer to it. */
+body.has-hero .container { padding-top: 3.5rem; }
+body.has-hero .ticker + .container,
+body.has-hero .p-hero + .ticker { margin-top: 0; }
+
+/* Section heads, the landing page's two-tone style at portal scale. */
+.s-head { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.75rem; }
+@media (min-width: 768px) { .s-head { flex-direction: row; align-items: flex-end; justify-content: space-between; } }
+.s-head h2 { margin-top: 0.8rem; font-family: var(--font-display); font-stretch: 125%; font-weight: 800; text-transform: uppercase; font-size: clamp(1.6rem, 3.2vw, 2.7rem); line-height: 1; letter-spacing: -0.015em; }
+.s-head h2 .soft { font-weight: 300; }
+.s-head .aside { color: var(--fg-muted); font-size: var(--text-sm); max-width: 42ch; }
+.s-block + .s-block { margin-top: clamp(4rem, 8vw, 6.5rem); }
+
+/* Empty states carry the lone king, like the end of the film. */
+.empty {
+  align-items: flex-start;
+  text-align: left;
+  min-height: 22rem;
+  justify-content: center;
+  padding: 3.5rem clamp(1.5rem, 5vw, 4rem);
+}
+.panel.empty::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  height: auto;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 0;
+  background: url("../brand/scenes/king.webp") 72% 60% / cover no-repeat;
+  opacity: 0.85;
+  -webkit-mask-image: linear-gradient(to right, transparent 25%, black 70%);
+  mask-image: linear-gradient(to right, transparent 25%, black 70%);
+  pointer-events: none;
+}
+.empty::after { display: none; }
+.empty > * { position: relative; z-index: 1; }
+.empty h3 { font-family: var(--font-display); font-stretch: 125%; font-weight: 800; text-transform: uppercase; font-size: clamp(1.6rem, 3.4vw, 2.8rem); line-height: 1; max-width: 16ch; }
+.empty p { max-width: 42ch; font-size: var(--text-base); }
+@media (max-width: 767px) {
+  .panel.empty::before { opacity: 0.35; -webkit-mask-image: none; mask-image: none; }
+}
+
+/* The portal's footer uses the same wordmark as the landing page. */
+.footer.portal { margin-top: 2rem; }
+@media (max-width: 899px) { body.has-tabbar .footer { padding-bottom: 5.5rem; } }
+
+/* Home: first steps before an edition exists. */
+a.panel.step-card { display: flex; flex-direction: column; min-height: 17rem; }
+.step-card h3 { margin-top: 1.25rem; font-family: var(--font-display); font-stretch: 125%; font-weight: 800; text-transform: uppercase; font-size: 1.35rem; line-height: 1.05; }
+.step-card p { margin-top: 0.75rem; }
+.step-card .btn { margin-top: auto !important; align-self: flex-start; }
+.step-card p { margin-bottom: 1.5rem; }
+.hero-empty-title { font-family: var(--font-display); font-stretch: 125%; font-weight: 800; text-transform: uppercase; font-size: 1.4rem; }
+.champion { overflow: hidden; }
+.champion::before { content: ""; position: absolute; inset: 0; background: url("../brand/scenes/king.webp") 80% 55% / cover; opacity: 0.6; -webkit-mask-image: linear-gradient(to right, transparent 30%, black); mask-image: linear-gradient(to right, transparent 30%, black); }
+.champion > * { position: relative; }

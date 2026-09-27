@@ -1,13 +1,31 @@
 import { store, STAGE_LABEL } from "../store.js";
-import { emptyState, esc, pageHeader } from "../ui.js";
+import { emptyState, esc, sectionHead } from "../ui.js";
 import { startPage } from "../page.js";
 
 const STAGE_ORDER = ["group", "r16", "qf", "sf", "final"];
 
-await startPage("leaderboard", { render });
+await startPage("leaderboard", { render, hero });
+
+function hero() {
+  const players = store.profiles.filter((p) => p.role === "player");
+  const top = players.reduce((m, p) => Math.max(m, p.rating), 0);
+  return {
+    scene: "distant",
+    shift: "0%",
+    eyebrow: "Ratings",
+    bold: "Leaderboard,",
+    soft: "ranked by Elo.",
+    lede: "Every finished game moves ratings up or down. Beat a stronger player and you climb further.",
+    stats: [
+      { value: players.length, label: "Players" },
+      { value: top || "-", label: "Top rating" },
+      { value: store.matches.filter((m) => m.ratings_applied).length, label: "Games rated" },
+    ],
+  };
+}
 
 function render(profile) {
-  const header = pageHeader("Leaderboard", "Players ranked by rating. Every finished game moves ratings up or down using the Elo system.");
+  const header = "";
   const entrants = new Set(store.groupPlayers.map((gp) => gp.player_id));
   const final = store.matches.find((m) => m.stage === "final");
 
@@ -61,7 +79,9 @@ function render(profile) {
     .join("");
 
   return `${header}
-    <div class="grid sm-3 podium mb-6">${podium}</div>
+    ${sectionHead("Top three", "The", "podium.")}
+    <div class="grid sm-3 podium" style="margin-bottom:clamp(4rem,8vw,6rem)">${podium}</div>
+    ${sectionHead("Full table", "Every", "player.")}
     <div class="panel table-wrap">
       <table class="table" style="min-width:640px">
         <thead><tr><th style="width:4rem">Rank</th><th>Player</th><th class="r">Rating</th><th class="r">+/-</th><th class="c">W / D / L</th><th class="r">Reached</th></tr></thead>

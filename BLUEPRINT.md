@@ -10,7 +10,7 @@
 |---|---|---|---|---|---|
 | 0 | Preloader | Brand moment while fonts load | Percentage ring around the logo | ring fills, iris opens into the hero | no |
 | 1 | Nav | Always there | Floating glass pill: logo, Format, Road, Groups, Play, FAQ, **Sign in** | hides on scroll down, returns on scroll up | no |
-| 2 | Hero | First impression | Oversized type + chrome cutouts (2d): "AMAZE YOUTH CHESS / TOURNAMENT 2026", rook right, pawn left, ghost word "CHECKMATE" | pinned 160vh: pieces parallax, captions change "Think." → "Play." → "Become legendary." | **slot ready** (video later) |
+| 2 | Hero | First impression | Scroll-driven film (180 frames): camera glides between chrome pieces to a lone king. Title above the distant king; "Think." left, "Play." right; "Become / Legendary." flanking the king | pinned 320vh (240vh phones), plays forward on scroll down and rewinds on scroll up, eased catch-up, final frame holds | **yes** (`assets/sequences/hero`) |
 | 3 | Ticker | Rhythm break | Infinite band: 32 players · 8 groups · 63 games · one champion | speeds up with scroll | no |
 | 4 | Manifesto | Why it matters | Word-by-word scroll highlight | words light up as you scroll | no |
 | 5 | Numbers | Format at a glance | Glass stat cards: 32 / 8 / 63 / 10+5 | counters roll up | no |
@@ -27,13 +27,20 @@ Persistent: scroll-progress ring (bottom right), cursor dot that grows over link
 
 ## Portal pages (after sign-in)
 
-Same tokens, nav and motion language: line-mask page titles over a ghost outline word, glass panels, chrome countdowns, a spotlight behind every board, staggered reveals. Layouts and features stay as they are.
+The portal speaks the landing page's language: every page opens on a full-width band with a still from the hero film, a mono label, a two-tone headline (bold + light chrome), one line of context and live counters. Below it, sections use the landing page's two-tone heads, and every page ends with the giant "AMAZE" wordmark footer. Smooth scrolling, parallax and reveals match the landing page.
 
-- **login.html:** full-bleed rook, glass sign-in card, preloader iris.
-- **home.html:** cinematic greeting, glass next-game card with a big chrome countdown, spotlit live boards.
-- **fixtures / groups / bracket / leaderboard:** restyled as in REDESIGN_PLAN.md.
-- **match.html:** board under a radial spotlight, glass clocks that pulse red under 30 seconds.
-- **admin.html:** same tools, glass restyle.
+| Page | Scene | Headline |
+|---|---|---|
+| login.html | king | Amaze Youth Chess / Tournament 2026 (glass card) |
+| home.html | king | tournament name, or "The board / is set." before an edition exists; ticker band below |
+| fixtures.html | path | Fixtures / & results. |
+| groups.html | pieces | Eight groups. / Top two go through. |
+| bracket.html | rising | The road / to the crown. |
+| leaderboard.html | distant | Leaderboard, / ranked by Elo. |
+| match.html | rising (compact) | White player / vs Black player |
+| admin.html | path (compact) | Run the / tournament. |
+
+Scenes live in `assets/brand/scenes/` (stills from the hero film).
 
 ## Stack
 

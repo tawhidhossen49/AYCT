@@ -20,7 +20,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chessground@9.2.1/assets/chessground.cburnett.css">
   <link rel="stylesheet" href="assets/css/styles.css">
   <link rel="stylesheet" href="assets/css/landing.css">
-  <link rel="preload" as="image" href="assets/brand/rook.webp">
+  <link rel="preload" as="image" href="assets/sequences/hero/poster.webp" fetchpriority="high">
   <script>document.documentElement.classList.remove("no-js"); if (matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("reduced");</script>
   <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/ScrollTrigger.min.js"></script>
@@ -60,37 +60,52 @@
   </header>
 
   <main id="top">
-    <!-- 2. Hero -->
-    <section class="hl" aria-label="Amaze Youth Chess Tournament">
-      <div class="hl__stage">
-        <!-- Hero video slot: set data-sequence="assets/sequences/hero/" once the clip is extracted. -->
-        <canvas class="hl__seq" aria-hidden="true" data-sequence=""></canvas>
-        <div class="hl__glow"></div>
-        <span class="ghost hl__ghost" aria-hidden="true">Checkmate Checkmate</span>
-        <img class="hl__piece hl__pawn" src="assets/brand/pawn.webp" alt="" aria-hidden="true" width="452" height="1040">
-        <img class="hl__piece hl__rook" src="assets/brand/rook.webp" alt="" aria-hidden="true" width="570" height="1600" fetchpriority="high">
+    <!-- 2. Hero: a scroll-driven film. The video only moves forward as you scroll down. -->
+    <section class="hv" aria-label="Amaze Youth Chess Tournament">
+      <div class="hv__stage">
+        <img class="hv__poster" src="assets/sequences/hero/poster.webp" alt="" aria-hidden="true" width="1920" height="1080" fetchpriority="high">
+        <canvas class="hv__canvas" aria-hidden="true" data-sequence="assets/sequences/hero/"></canvas>
+        <div class="hv__shade" aria-hidden="true"></div>
 
-        <div class="hl__copy">
-          <img class="hl__logo" src="assets/brand/logo.png" alt="" data-hero-in>
-          <h1 class="hl__title">
-            <span class="display" data-hero-line>Amaze Youth Chess</span>
-            <span class="display-light chrome-text" data-hero-line>Tournament <span data-year>2026</span></span>
-          </h1>
-          <div class="hl__captions" aria-label="Think. Play. Become legendary.">
-            <span class="hl__cap">Think.</span>
-            <span class="hl__cap">Play.</span>
-            <span class="hl__cap">Become legendary.</span>
+        <!-- Opening: the title sits above the distant king, the actions below it. -->
+        <div class="hv__intro">
+          <div class="hv__intro-top">
+            <p class="eyebrow hv__eyebrow" data-intro>Edition <span data-year>2026</span><span class="hv__eyebrow-more"> · The annual championship</span></p>
+            <h1 class="hv__title">
+              <span class="display" data-intro>Amaze Youth Chess</span>
+              <span class="display-light chrome-text" data-intro>Tournament <span data-year>2026</span></span>
+            </h1>
           </div>
-          <div class="hl__ctas" data-hero-in>
-            <a class="btn btn-primary btn-lg" href="login.html" data-portal-link data-magnetic>Enter the portal <i class="ph-bold ph-arrow-right"></i></a>
-            <a class="btn btn-lg" href="#format" data-magnetic>See the format</a>
+          <div class="hv__intro-bottom">
+            <p class="hv__tagline" data-intro>Think. Play. Become legendary.</p>
+            <div class="hv__ctas" data-intro>
+              <a class="btn btn-primary btn-lg" href="login.html" data-portal-link data-magnetic>Enter the portal <i class="ph-bold ph-arrow-right"></i></a>
+              <a class="btn btn-lg hv__ghost-btn" href="#format" data-magnetic>See the format</a>
+            </div>
           </div>
         </div>
 
-        <div class="hl__meta" aria-hidden="true">
-          <span>Edition <span data-year>2026</span></span>
-          <span>32 players · 1 champion</span>
+        <!-- Chapters: each appears in the empty side of the frame as the pieces glide away. -->
+        <div class="hv__chapter hv__chapter--left" aria-hidden="true">
+          <div class="hv__chapter-inner">
+            <p class="hv__word display">Think.</p>
+            <p class="hv__line">Every game is won in the mind first.</p>
+          </div>
         </div>
+        <div class="hv__chapter hv__chapter--right" aria-hidden="true">
+          <div class="hv__chapter-inner">
+            <p class="hv__word display">Play.</p>
+            <p class="hv__line">Thirty-two players. Sixty-four squares. Ten minutes on the clock.</p>
+          </div>
+        </div>
+
+        <!-- Finale: the words flank the king. -->
+        <div class="hv__finale" aria-hidden="true">
+          <p class="hv__flank hv__flank--left"><span class="hv__flank-inner display">Become</span></p>
+          <p class="hv__flank hv__flank--right"><span class="hv__flank-inner display-light chrome-text">Legendary.</span></p>
+        </div>
+
+        <div class="hv__progress" aria-hidden="true"><span class="hv__progress-fill"></span></div>
       </div>
     </section>
 
@@ -283,7 +298,7 @@
 
     <!-- 12. Final CTA -->
     <section class="cta" aria-label="Sign in">
-      <img class="cta__img" src="assets/brand/rook.webp" alt="" aria-hidden="true" width="570" height="1600" loading="lazy" data-cta-img>
+      <img class="cta__img" src="assets/brand/scenes/king.webp" alt="" aria-hidden="true" width="1920" height="1080" loading="lazy" data-cta-img>
       <div class="cta__copy">
         <h2 class="display chrome-text" data-split>Your move.</h2>
         <p data-reveal>Sign in to see your group, your next opponent and the countdown to your first game.</p>

@@ -46,6 +46,14 @@ Deno.serve(async (req) => {
     return json({ error: "Rating must be a whole number between 0 and 3500" }, 400);
   }
 
+  // Everyone's sign-in email, for the admin's People tab. Emails are not
+  // readable by other members.
+  if (body.action === "list") {
+    const { data, error } = await admin.from("profiles").select("id, email");
+    if (error) return json({ error: error.message }, 400);
+    return json({ people: data });
+  }
+
   if (body.action === "create") {
     const email = str(body.email).toLowerCase();
     const password = str(body.password);

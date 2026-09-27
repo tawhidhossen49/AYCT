@@ -14,7 +14,12 @@ let lenis = null;
 // Buttery scrolling for long pages. Anchor links glide instead of jumping.
 export function initSmoothScroll() {
   if (!hasGsap || reduced || !Lenis) return null;
-  lenis = new Lenis({ lerp: 0.09, smoothWheel: true });
+  // Dialogs and inner scrolling lists keep their own native scrolling.
+  lenis = new Lenis({
+    lerp: 0.09,
+    smoothWheel: true,
+    prevent: (node) => Boolean(node.closest?.("dialog, .moves, .comments, .pick-list, .modal-body, [data-lenis-prevent]")),
+  });
   lenis.on("scroll", ScrollTrigger.update);
   gsap.ticker.add((t) => lenis.raf(t * 1000));
   gsap.ticker.lagSmoothing(0);
@@ -25,6 +30,7 @@ export function initSmoothScroll() {
     const target = document.querySelector(id);
     if (!target) return;
     e.preventDefault();
+    lenis.resize();
     lenis.scrollTo(target, { offset: -20, duration: 1.4 });
   });
   return lenis;
@@ -171,4 +177,42 @@ export function animateIn(root = document) {
   reveals(root);
   counters(root);
   magnetic(root);
+}
+
+// The portal's page band: the film still settles in, then drifts slower
+// than the page as you scroll (the landing page's parallax).
+let heroTriggers = [];
+export function heroMotion(section, { entrance = true } = {}) {
+  heroTriggers.forEach((t) => t.kill());
+  heroTriggers = [];
+  if (!hasGsap || reduced || !section) return;
+  const img = section.querySelector(".p-hero__media img");
+  const inner = section.querySelector(".p-hero__inner");
+  if (entrance) gsap.fromTo(img, { scale: 1.2, autoAlpha: 0 }, { scale: 1.08, autoAlpha: 1, duration: 2.2, ease: "expo.out" });
+  heroTriggers.push(
+    gsap.to(img, { yPercent: 14, ease: "none", scrollTrigger: { trigger: section, start: "top top", end: "bottom top", scrub: true } }).scrollTrigger,
+    gsap.to(inner, { y: -60, autoAlpha: 0.2, ease: "none", scrollTrigger: { trigger: section, start: "40% top", end: "bottom top", scrub: true } }).scrollTrigger,
+  );
+}
+
+// The giant wordmark's letters rise in as the footer arrives.
+export function footerMotion(footer) {
+  if (!hasGsap || reduced || !footer) return;
+  const letters = footer.querySelectorAll(".footer__word span");
+  gsap.from(letters, { yPercent: 70, autoAlpha: 0, stagger: 0.06, duration: 1.2, ease: "expo.out", scrollTrigger: { trigger: footer, start: "top 85%", once: true } });
+}
+
+// Keeps a ticker band gliding; scrolling speeds it up for a moment.
+export function tickerMotion(root = document) {
+  if (!hasGsap || reduced) return;
+  root.querySelectorAll(".ticker__track:not([data-ticking])").forEach((track) => {
+    track.dataset.ticking = "1";
+    const loop = gsap.to(track, { xPercent: -50, duration: 40, ease: "none", repeat: -1 });
+    ScrollTrigger.create({
+      onUpdate: (self) => {
+        gsap.to(loop, { timeScale: 1 + Math.min(Math.abs(self.getVelocity()) / 600, 5), duration: 0.2, overwrite: true });
+        gsap.to(loop, { timeScale: 1, duration: 1.2, delay: 0.25, overwrite: false });
+      },
+    });
+  });
 }
