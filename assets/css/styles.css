@@ -622,6 +622,9 @@ select.input option { background: var(--graphite); }
 }
 .tabbar a.active { color: var(--fg); background: var(--panel-2); }
 .tabbar i { font-size: 20px; }
+/* Staff carry seven tabs: a touch smaller so all fit. */
+.tabbar.many a { font-size: 0.58rem; }
+.tabbar.many i { font-size: 18px; }
 
 /* ---------------------------------------------------------------- persistent details */
 
@@ -860,6 +863,13 @@ select.input option { background: var(--graphite); }
 /* ---------------------------------------------------------------- bracket */
 
 .bracket-scroll { overflow-x: auto; margin: 0 -4vw; padding: 1rem 4vw 1.5rem; scrollbar-width: thin; }
+.swipe-hint { display: none; }
+/* The four rounds don't fit a phone or tablet: swipe, stopping on each round. */
+@media (max-width: 1079px) {
+  .swipe-hint { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.25rem; font-size: var(--text-xs); color: var(--fg-dim); }
+  .bracket-scroll { scroll-snap-type: x proximity; scroll-padding-left: 4vw; }
+  .bracket-col { scroll-snap-align: start; }
+}
 .bracket { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2.5rem; min-width: 1000px; }
 .bracket h2 { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.25rem; font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: var(--fg-muted); }
 .bracket-col { position: relative; }

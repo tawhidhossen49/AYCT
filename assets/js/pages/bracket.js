@@ -60,7 +60,7 @@ function render() {
     </div>`;
   }).join("");
 
-  return `${header}<div class="bracket-scroll"><div class="bracket">${cols}</div></div>`;
+  return `${header}<p class="swipe-hint"><i class="ph ph-hand-swipe-right" aria-hidden="true"></i> Swipe for later rounds</p><div class="bracket-scroll"><div class="bracket">${cols}</div></div>`;
 }
 
 function card(m) {

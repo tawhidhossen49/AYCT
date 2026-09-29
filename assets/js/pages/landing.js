@@ -319,10 +319,28 @@ function road() {
     });
     gsap.from(cards, { y: 80, autoAlpha: 0, stagger: 0.08, duration: 1, ease: "power3.out", scrollTrigger: { trigger: ".road__pin", start: "top 70%", once: true } });
   });
+  // Phones and tablets: the same pinned ride, with cards sized to the screen.
   mm.add("(max-width: 899px)", () => {
-    cards.forEach((card) =>
-      ScrollTrigger.create({ trigger: card, start: "top 60%", end: "bottom 60%", onToggle: (s) => s.isActive && setCount(card.dataset.left) }),
-    );
+    const track = document.querySelector(".road__track");
+    const distance = () => track.scrollWidth - window.innerWidth + window.innerWidth * 0.06;
+    gsap.to(track, {
+      x: () => -distance(),
+      ease: "none",
+      scrollTrigger: {
+        trigger: ".road__pin",
+        start: "top top",
+        end: () => `+=${distance() * 1.15}`,
+        pin: true,
+        scrub: 0.6,
+        anticipatePin: 1,
+        invalidateOnRefresh: true,
+        onUpdate: (self) => {
+          const i = Math.min(cards.length - 1, Math.floor(self.progress * cards.length * 0.999));
+          setCount(cards[i].dataset.left);
+        },
+      },
+    });
+    gsap.from(cards, { y: 60, autoAlpha: 0, stagger: 0.08, duration: 1, ease: "power3.out", scrollTrigger: { trigger: ".road__pin", start: "top 70%", once: true } });
   });
 }
 
@@ -360,6 +378,24 @@ function ring() {
       rotateY: -step * (n - 1),
       ease: "none",
       scrollTrigger: { trigger: ".cyl", start: "top top", end: "+=220%", pin: true, scrub: 1, anticipatePin: 1 },
+    });
+    return () => {
+      gsap.set([ringEl, ...items], { clearProps: "all" });
+    };
+  });
+  // Phones and tablets: the same ring, with its size taken from the card width.
+  mm.add("(max-width: 899px)", () => {
+    const ringEl = document.querySelector("[data-ring]");
+    const items = [...ringEl.children];
+    const n = items.length;
+    const step = 360 / n;
+    const radius = Math.round((n * ringEl.offsetWidth * (350 / 300)) / (2 * Math.PI));
+    items.forEach((it, i) => (it.style.transform = `rotateY(${i * step}deg) translateZ(${radius}px)`));
+    gsap.set(ringEl, { z: -radius, rotateX: -6 });
+    gsap.to(ringEl, {
+      rotateY: -step * (n - 1),
+      ease: "none",
+      scrollTrigger: { trigger: ".cyl", start: "top top", end: "+=220%", pin: true, scrub: 0.8, anticipatePin: 1, invalidateOnRefresh: true },
     });
     return () => {
       gsap.set([ringEl, ...items], { clearProps: "all" });
@@ -426,34 +462,40 @@ function setupDemoBoard() {
 
 function deck() {
   const mm = gsap.matchMedia();
-  mm.add("(min-width: 1024px)", () => {
-    const cards = gsap.utils.toArray(".deck__card");
-    const items = gsap.utils.toArray(".deck__list li");
-    cards.forEach((c, i) => gsap.set(c, { zIndex: cards.length - i, y: i * 22, scale: 1 - i * 0.05, rotateX: 6, transformPerspective: 1000, transformOrigin: "50% 0%" }));
-    const tl = gsap.timeline({
-      scrollTrigger: {
-        trigger: ".deck",
-        start: "top top",
-        end: `+=${cards.length * 55}%`,
-        pin: true,
-        scrub: 0.6,
-        anticipatePin: 1,
-        onUpdate: (self) => {
-          const active = Math.min(cards.length - 1, Math.floor(self.progress * cards.length));
-          items.forEach((li, i) => li.classList.toggle("is-active", i === active));
-        },
+  mm.add("(min-width: 1024px)", () => stackDeck(22));
+  // Phones and tablets: the same stack, a little tighter.
+  mm.add("(max-width: 1023px)", () => stackDeck(14));
+}
+
+// Cards stacked like a deck; scrolling flips them away one by one.
+// `gap` is how far each card below peeks out.
+function stackDeck(gap) {
+  const cards = gsap.utils.toArray(".deck__card");
+  const items = gsap.utils.toArray(".deck__list li");
+  cards.forEach((c, i) => gsap.set(c, { zIndex: cards.length - i, y: i * gap, scale: 1 - i * 0.05, rotateX: 6, transformPerspective: 1000, transformOrigin: "50% 0%" }));
+  const tl = gsap.timeline({
+    scrollTrigger: {
+      trigger: ".deck",
+      start: "top top",
+      end: `+=${cards.length * 55}%`,
+      pin: true,
+      scrub: 0.6,
+      anticipatePin: 1,
+      onUpdate: (self) => {
+        const active = Math.min(cards.length - 1, Math.floor(self.progress * cards.length));
+        items.forEach((li, i) => li.classList.toggle("is-active", i === active));
       },
-    });
-    cards.slice(0, -1).forEach((c, i) => {
-      tl.to(c, { yPercent: -125, rotateX: 22, autoAlpha: 0, duration: 1, ease: "power2.in" }, i).to(
-        cards.slice(i + 1),
-        { y: (j) => j * 22, scale: (j) => 1 - j * 0.05, duration: 1, ease: "power2.out" },
-        i,
-      );
-    });
-    tl.to({}, { duration: 0.6 });
-    return () => gsap.set(cards, { clearProps: "all" });
+    },
   });
+  cards.slice(0, -1).forEach((c, i) => {
+    tl.to(c, { yPercent: -125, rotateX: 22, autoAlpha: 0, duration: 1, ease: "power2.in" }, i).to(
+      cards.slice(i + 1),
+      { y: (j) => j * gap, scale: (j) => 1 - j * 0.05, duration: 1, ease: "power2.out" },
+      i,
+    );
+  });
+  tl.to({}, { duration: 0.6 });
+  return () => gsap.set(cards, { clearProps: "all" });
 }
 
 // ---------------------------------------------------------------- ratings, cta, footer

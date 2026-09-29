@@ -257,12 +257,17 @@
 .stage-card .players i.out { background: transparent; border: 1px solid var(--edge-2); box-shadow: none; }
 .stage-card.final { border-color: var(--edge-2); box-shadow: 0 0 80px -20px rgb(228 231 236 / 0.35); }
 .stage-card.final .trophy { position: absolute; right: -0.1em; bottom: -0.25em; font-size: 12rem; line-height: 1; color: rgb(255 255 255 / 0.06); }
+/* Phones and tablets: the same pinned ride, with the heading above the cards. */
 @media (max-width: 899px) {
-  .road__pin { height: auto; display: block; padding-block: 6rem; }
-  .road__head { position: static; margin-bottom: 2rem; flex-direction: column; align-items: flex-start; }
-  .road__count small { text-align: left; }
-  .road__track { flex-direction: column; padding: 0; width: var(--container); margin: 0 auto; }
-  .stage-card { flex-basis: auto; min-height: 0; }
+  .road__pin { align-items: center; padding-top: calc(var(--nav-h) + 10rem); padding-bottom: 1.5rem; }
+  .road__head { top: calc(var(--nav-h) + 2rem); gap: 1rem; }
+  .road__head .h2 { font-size: clamp(1.6rem, 7.4vw, 2.6rem); }
+  .road__count { font-size: clamp(3.6rem, 19vw, 7rem); }
+  .road__count small { margin-top: 0.5rem; font-size: 0.6rem; }
+  .road__track { padding-top: 0; padding-left: 4vw; gap: 0.9rem; }
+  .stage-card { flex-basis: min(78vw, 380px); min-height: min(19rem, 44svh); padding: 1.5rem; }
+  .stage-card h3 { font-size: clamp(1.25rem, 6.2vw, 1.7rem); }
+  .stage-card.final .trophy { font-size: 9rem; }
 }
 
 /* ---------------------------------------------------------------- group ring */
@@ -289,12 +294,18 @@
 .cyl__card .pots span { flex: 1; padding: 0.45rem 0; border: 1px solid var(--edge-2); border-radius: 999px; text-align: center; font-family: var(--font-mono); font-size: 0.66rem; color: var(--fg-muted); }
 .cyl__card p { font-size: var(--text-sm); color: var(--fg-muted); }
 .cyl__floor { position: absolute; bottom: 8%; left: 50%; translate: -50% 0; width: 70vw; height: 18vh; background: radial-gradient(closest-side, rgb(228 231 236 / 0.12), transparent); pointer-events: none; }
+/* Phones and tablets: the same 3D ring, scaled to the screen. */
 @media (max-width: 899px) {
-  .cyl { height: auto; display: block; perspective: none; padding-block: 6rem; }
-  .cyl__head { position: static; margin-bottom: 2rem; }
-  .cyl__ring { width: auto; height: auto; margin: 0; display: flex; gap: 1rem; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 4vw 1rem; transform: none !important; }
-  .cyl__card { position: relative; inset: auto; flex: 0 0 72vw; height: 22rem; transform: none !important; scroll-snap-align: center; }
-  .cyl__floor { display: none; }
+  .cyl { perspective: 1100px; }
+  .cyl__head { top: calc(var(--nav-h) + 2rem); }
+  .cyl__head .h2 { font-size: clamp(1.6rem, 7.4vw, 2.6rem); }
+  .cyl__ring { width: min(210px, 56vw); height: min(290px, 40svh); margin-top: 7rem; }
+  .cyl__card { padding: 1.1rem; }
+  .cyl__card .letter { font-size: clamp(4.5rem, 20vw, 6.5rem); }
+  .cyl__card p { font-size: 0.78rem; line-height: 1.4; }
+  .cyl__card .pots { gap: 4px; }
+  .cyl__card .pots span { padding: 0.3rem 0; font-size: 0.6rem; }
+  .cyl__floor { width: 90vw; }
 }
 
 /* ---------------------------------------------------------------- play live */
@@ -327,11 +338,21 @@
 .deck__card ul { margin: auto 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .deck__card li { padding: 0.4rem 0.85rem; border-radius: 999px; border: 1px solid var(--edge-2); font-size: var(--text-xs); font-weight: 700; color: var(--fg-muted); }
 .deck__card { background: linear-gradient(160deg, #1a1b21, #0c0d10 70%); border: 1px solid var(--edge-2); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1), 0 40px 80px -30px rgb(0 0 0 / 0.9); }
+/* Phones and tablets: the same flip-through stack, with the roles as a row. */
 @media (max-width: 1023px) {
-  .deck { height: auto; padding-block: 6rem; }
-  .deck__list { display: none; }
-  .deck__stack { height: auto; display: grid; gap: 1rem; perspective: none; }
-  .deck__card { position: relative; inset: auto; min-height: 20rem; transform: none !important; opacity: 1 !important; }
+  .deck { padding-top: calc(var(--nav-h) + 1rem); }
+  .deck__inner { gap: 1.5rem; }
+  .deck__list { display: flex; flex-wrap: wrap; gap: 0.2rem 1rem; margin-top: 1.1rem; }
+  .deck__list li { padding: 0.15rem 0; gap: 0.4rem; font-size: clamp(0.8rem, 3.4vw, 1.1rem); }
+  .deck__list li span { font-size: 0.6rem; }
+  .deck__stack { height: min(23rem, 50svh); }
+  .deck__card { padding: 1.5rem; }
+  .deck__card h3 { font-size: clamp(1.35rem, 7vw, 2rem); margin-top: 1.1rem; }
+  .deck__card p { font-size: 0.92rem; }
+}
+@media (max-width: 767px) {
+  .deck__card .ico { width: 2.6rem; height: 2.6rem; font-size: 1.2rem; }
+  .deck__card li { padding: 0.3rem 0.7rem; }
 }
 
 /* ---------------------------------------------------------------- ratings */
@@ -373,3 +394,11 @@
 .cta h2 { font-size: clamp(3.4rem, 12vw, 11rem); }
 .cta p { margin: 1.25rem auto 2.25rem; max-width: 40ch; color: var(--fg-muted); }
 
+
+/* Short landscape screens (tablets, 1366x768 laptops): the ring and its
+   heading both fit. Taller PC screens are unchanged. */
+@media (min-width: 900px) and (max-height: 820px) {
+  .cyl__ring { width: 230px; height: 300px; margin-top: 12rem; }
+  .cyl__card { padding: 1.25rem; }
+  .cyl__card .letter { font-size: 6.5rem; }
+}

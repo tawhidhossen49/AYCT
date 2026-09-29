@@ -16,12 +16,12 @@ export const icon = (name, weight = "") => `<i class="ph${weight ? "-" + weight 
 // ---------------------------------------------------------------- shell
 
 const LINKS = [
-  { href: "home.html", label: "Dashboard", icon: "house", key: "home" },
+  { href: "home.html", label: "Dashboard", short: "Home", icon: "house", key: "home" },
   { href: "play.html", label: "Arena", icon: "crown-simple", key: "arena" },
   { href: "fixtures.html", label: "Fixtures", icon: "list-bullets", key: "fixtures" },
   { href: "groups.html", label: "Groups", icon: "squares-four", key: "groups" },
   { href: "bracket.html", label: "Bracket", icon: "tree-structure", key: "bracket" },
-  { href: "leaderboard.html", label: "Leaderboard", icon: "chart-bar", key: "leaderboard" },
+  { href: "leaderboard.html", label: "Leaderboard", short: "Ranks", icon: "chart-bar", key: "leaderboard" },
 ];
 
 // Top bar (desktop) and bottom tab bar (phones), with the current page lit.
@@ -60,14 +60,13 @@ export function mountShell(profile, active) {
       </div>
     </div>`;
 
-  const tabLinks = staff
-    ? [LINKS[0], LINKS[1], LINKS[2], LINKS[4], { href: "admin.html", label: "Control", icon: "sliders-horizontal", key: "admin" }]
-    : [LINKS[0], LINKS[1], LINKS[2], LINKS[3], LINKS[4]];
+  // Every page is one tap away on phones too, as in the PC menu.
+  const tabLinks = staff ? [...LINKS, { href: "admin.html", label: "Control", icon: "sliders-horizontal", key: "admin" }] : LINKS;
   const tabbar = document.createElement("nav");
-  tabbar.className = "tabbar";
+  tabbar.className = `tabbar${tabLinks.length > 6 ? " many" : ""}`;
   tabbar.setAttribute("aria-label", "Main");
   tabbar.innerHTML = tabLinks
-    .map((l) => `<a href="${l.href}" class="${l.key === active ? "active" : ""}">${icon(l.icon, l.key === active ? "fill" : "")}${l.label}</a>`)
+    .map((l) => `<a href="${l.href}" class="${l.key === active ? "active" : ""}" aria-label="${l.label}">${icon(l.icon, l.key === active ? "fill" : "")}${l.short ?? l.label}</a>`)
     .join("");
 
   document.body.prepend(header);

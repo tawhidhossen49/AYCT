@@ -8,6 +8,8 @@ const { gsap, ScrollTrigger, SplitText, Lenis } = window;
 export const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 export const hasGsap = Boolean(gsap && ScrollTrigger);
 if (hasGsap) gsap.registerPlugin(ScrollTrigger, ...(SplitText ? [SplitText] : []));
+// Phones: the address bar sliding in and out mustn't re-measure pinned scenes.
+if (hasGsap) ScrollTrigger.config({ ignoreMobileResize: true });
 
 let lenis = null;
 
