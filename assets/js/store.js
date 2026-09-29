@@ -129,18 +129,35 @@ export function sortByTime(a, b) {
 
 export const involves = (m, playerId) => m.white_id === playerId || m.black_id === playerId;
 
-export const STAGE_LABEL = { group: "Group stage", r16: "Round of 16", qf: "Quarterfinal", sf: "Semifinal", final: "Final" };
+export const STAGE_LABEL = { group: "Group stage", r16: "Round of 16", qf: "Quarterfinal", sf: "Semifinal", final: "Final", friendly: "Friendly" };
 
-// Armageddon games settle drawn knockout games; they are not bracket games.
+export const KNOCKOUT_STAGES = ["r16", "qf", "sf", "final"];
+export const isKnockout = (m) => KNOCKOUT_STAGES.includes(m.stage);
+export const isFriendly = (m) => m.stage === "friendly";
+// Only rated games move Elo ratings. Older rows without the flag are rated.
+export const isRated = (m) => m.rated !== false && !m.tiebreak_of;
+
+// The tournament proper: group and bracket games. Armageddon tiebreaks
+// settle drawn knockout games and friendlies are extra, so neither counts.
 export const isTiebreak = (m) => Boolean(m.tiebreak_of);
-export const bracketGames = (matches) => matches.filter((m) => !m.tiebreak_of);
+export const bracketGames = (matches) => matches.filter((m) => !m.tiebreak_of && !isFriendly(m));
+
+// How the edition counts: "rated", "unrated", or null until staff choose
+// (games are rated until then).
+export function tournamentMode(t = store.tournament) {
+  if (!t) return null;
+  return t.rated === true ? "rated" : t.rated === false ? "unrated" : null;
+}
+export const tournamentUnrated = (t = store.tournament) => t?.rated === false;
 
 export function matchContext(m) {
+  const odd = m.rated === false && !tournamentUnrated() ? " · Unrated" : "";
   if (m.stage === "group") {
     const g = store.groups.find((x) => x.id === m.group_id);
-    return `Group ${g?.label ?? ""} · Round ${m.round}`;
+    return `Group ${g?.label ?? ""} · Round ${m.round}${odd}`;
   }
-  return m.tiebreak_of ? `${STAGE_LABEL[m.stage]} · Armageddon` : STAGE_LABEL[m.stage];
+  if (isFriendly(m)) return `Friendly · ${isRated(m) ? "Rated" : "Unrated"}`;
+  return m.tiebreak_of ? `${STAGE_LABEL[m.stage]} · Armageddon` : `${STAGE_LABEL[m.stage]}${odd}`;
 }
 
 // Starting clocks for a game: its own (Armageddon) or the edition's.

@@ -18,6 +18,7 @@ export const KIND_ICON = {
   tiebreak: "lightning",
   draw: "shuffle",
   message: "megaphone",
+  registration: "user-plus",
 };
 
 export function onFeed(fn) {

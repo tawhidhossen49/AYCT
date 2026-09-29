@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07070a">
+  <meta name="description" content="Register for the Amaze Youth Chess Tournament.">
+  <title>Register · Amaze Youth Chess Tournament</title>
+  <link rel="icon" type="image/png" href="assets/brand/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Manrope:wght@400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/bold/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/fill/style.css">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/ScrollTrigger.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/SplitText.min.js"></script>
+</head>
+<body>
+  <a href="index.html" class="back-link"><img src="assets/brand/logo.png" alt=""><i class="ph-bold ph-arrow-left"></i> Back to the tournament</a>
+
+  <main class="login register">
+    <div class="login-art" aria-hidden="true">
+      <img src="assets/brand/scenes/rising.webp" alt="" data-login-art width="1920" height="1080">
+      <span class="ghost">Register</span>
+    </div>
+
+    <section class="panel lit login-card register-card" data-reveal="load">
+      <span class="eyebrow">Registration</span>
+      <h1 class="login-title">
+        <span class="display">Amaze Youth Chess</span>
+        <span class="display-light chrome-text">Tournament <span id="year">2027</span></span>
+      </h1>
+      <div id="body" class="mt-6">
+        <div class="skeleton" style="height:18rem"></div>
+      </div>
+      <p class="login-foot">Already accepted? <a href="login.html" style="text-decoration:underline">Sign in</a></p>
+    </section>
+  </main>
+
+  <script type="module" src="assets/js/pages/register.js"></script>
+</body>
+</html>

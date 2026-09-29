@@ -31,7 +31,7 @@ The portal speaks the landing page's language: every page opens on a full-width 
 
 | Page | Scene | Headline |
 |---|---|---|
-| login.html | king | Amaze Youth Chess / Tournament 2026 (glass card) |
+| login.html | king | Amaze Youth Chess / Tournament 2027 (glass card) |
 | home.html | king | tournament name, or "The board / is set." before an edition exists; ticker band below |
 | fixtures.html | path | Fixtures / & results. |
 | groups.html | pieces | Eight groups. / Top two go through. |

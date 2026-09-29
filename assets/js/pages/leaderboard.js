@@ -1,5 +1,5 @@
-import { store, STAGE_LABEL } from "../store.js";
-import { emptyState, esc, sectionHead } from "../ui.js";
+import { store, STAGE_LABEL, bracketGames, isRated, tournamentUnrated } from "../store.js";
+import { emptyState, esc, notice, sectionHead } from "../ui.js";
 import { startPage } from "../page.js";
 
 const STAGE_ORDER = ["group", "r16", "qf", "sf", "final"];
@@ -15,7 +15,7 @@ function hero() {
     eyebrow: "Ratings",
     bold: "Leaderboard,",
     soft: "ranked by Elo.",
-    lede: "Every finished game moves ratings up or down. Beat a stronger player and you climb further.",
+    lede: "Only rated games count here: every rated game moves Elo ratings up or down, and beating a stronger player lifts you further. Unrated and practice games never change the table.",
     stats: [
       { value: players.length, label: "Players" },
       { value: top || "-", label: "Top rating" },
@@ -25,17 +25,21 @@ function hero() {
 }
 
 function render(profile) {
-  const header = "";
+  const header = tournamentUnrated()
+    ? notice("This year's tournament is unrated, so its games don't change ratings or this table. The group tables and the bracket show the results.")
+    : "";
   const entrants = new Set(store.groupPlayers.map((gp) => gp.player_id));
-  const final = store.matches.find((m) => m.stage === "final");
+  const final = store.matches.find((m) => m.stage === "final" && !m.tiebreak_of);
 
   const rows = store.profiles
     .filter((p) => p.role === "player" && (entrants.size === 0 || entrants.has(p.id)))
     .map((p) => {
-      const games = store.matches.filter((m) => m.white_id === p.id || m.black_id === p.id);
+      const mine = (m) => m.white_id === p.id || m.black_id === p.id;
+      // How far they got: tournament games only. Record: rated games only.
+      const games = bracketGames(store.matches).filter(mine);
       let wins = 0, draws = 0, losses = 0, change = 0, deepest = 0;
-      for (const m of games) {
-        deepest = Math.max(deepest, STAGE_ORDER.indexOf(m.stage));
+      for (const m of games) deepest = Math.max(deepest, STAGE_ORDER.indexOf(m.stage));
+      for (const m of store.matches.filter((x) => mine(x) && isRated(x))) {
         if (m.status !== "completed" || !m.result) continue;
         const white = m.white_id === p.id;
         change += (white ? m.white_rating_delta : m.black_rating_delta) ?? 0;
@@ -81,10 +85,10 @@ function render(profile) {
   return `${header}
     ${sectionHead("Top three", "The", "podium.")}
     <div class="grid sm-3 podium" style="margin-bottom:clamp(4rem,8vw,6rem)">${podium}</div>
-    ${sectionHead("Full table", "Every", "player.")}
+    ${sectionHead("Full table", "Every", "player.", "Rating, +/- and W / D / L count rated games only.")}
     <div class="panel table-wrap">
       <table class="table" style="min-width:640px">
-        <thead><tr><th style="width:4rem">Rank</th><th>Player</th><th class="r">Rating</th><th class="r">+/-</th><th class="c">W / D / L</th><th class="r">Reached</th></tr></thead>
+        <thead><tr><th style="width:4rem">Rank</th><th>Player</th><th class="r">Rating</th><th class="r">+/-</th><th class="c" title="Rated games only">W / D / L</th><th class="r">Reached</th></tr></thead>
         <tbody>${body}</tbody>
       </table>
     </div>`;

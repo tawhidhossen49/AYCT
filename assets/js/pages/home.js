@@ -6,7 +6,7 @@
 // to see exactly what that player sees.
 
 import { isStaff } from "../auth.js";
-import { store, effectiveStatus, involves, sortByTime, matchContext, bracketGames, timeControlLabel } from "../store.js";
+import { store, effectiveStatus, involves, sortByTime, matchContext, bracketGames, isKnockout, timeControlLabel, tournamentUnrated } from "../store.js";
 import { countdownHtml, formatDateTime, serverNow } from "../time.js";
 import { formatPoints, groupStandings } from "../standings.js";
 import { esc, groupTableHtml, icon, liveTag, matchRowHtml, playerHtml, resultText, sectionHead } from "../ui.js";
@@ -60,7 +60,7 @@ function subjectFor(p) {
   return null;
 }
 
-// "Amaze Youth Chess Tournament 2026" -> bold "Amaze Youth Chess", light "Tournament 2026".
+// "Amaze Youth Chess Tournament 2027" -> bold "Amaze Youth Chess", light "Tournament 2027".
 function splitName(name) {
   const i = name.toLowerCase().lastIndexOf("tournament");
   return i > 0 ? [name.slice(0, i).trim(), name.slice(i)] : [name, ""];
@@ -69,6 +69,12 @@ function splitName(name) {
 // ---------------------------------------------------------------- header band
 
 function hero(p) {
+  const band = heroBand(p);
+  if (band.lede && tournamentUnrated()) band.lede += " This is an unrated tournament: ratings don't change.";
+  return band;
+}
+
+function heroBand(p) {
   subjectId = subjectFor(p);
   const first = esc(p.full_name.split(" ")[0]);
   const t = store.tournament;
@@ -150,9 +156,10 @@ function scoreFor(m, id) {
   return (m.result === "1-0") === (m.white_id === id) ? 1 : 0;
 }
 
-// Tournament record, counting rated games only (not Armageddon tiebreaks).
+// Tournament record: group and bracket games (not Armageddon tiebreaks or
+// friendly matches).
 function record(id) {
-  const done = store.matches.filter((m) => involves(m, id) && m.status === "completed" && m.result && !m.tiebreak_of);
+  const done = bracketGames(store.matches).filter((m) => involves(m, id) && m.status === "completed" && m.result);
   const r = { w: 0, d: 0, l: 0, points: 0, games: done.length };
   for (const m of done) {
     const s = scoreFor(m, id);
@@ -166,7 +173,7 @@ function record(id) {
 
 // Where the player stands in the tournament, in a few words.
 function standing(id) {
-  const ko = bracketGames(store.matches).filter((m) => m.stage !== "group" && involves(m, id));
+  const ko = bracketGames(store.matches).filter((m) => isKnockout(m) && involves(m, id));
   if (ko.length) {
     const deepest = ko.sort((a, b) => STAGE_ORDER.indexOf(b.stage) - STAGE_ORDER.indexOf(a.stage))[0];
     if (deepest.stage === "final" && deepest.winner_id === id) return { value: "Champion", sub: "Won the final" };
@@ -235,7 +242,7 @@ function dashboard(id, viewer) {
   const upcoming = store.matches.filter((m) => involves(m, id) && m.status !== "completed" && m.id !== next?.id).sort(sortByTime);
 
   const tiles = `<div class="stat-tiles" data-stagger="load">
-    <div class="panel stat-tile"><span class="v">${who.rating}</span><span class="k">Rating</span><span class="sub">${change === 0 ? "No change yet" : `${change > 0 ? "+" : ""}${change} this tournament`}</span></div>
+    <div class="panel stat-tile"><span class="v">${who.rating}</span><span class="k">Rating</span><span class="sub">${tournamentUnrated() ? "Unrated tournament: no change" : change === 0 ? "No change yet" : `${change > 0 ? "+" : ""}${change} this tournament`}</span></div>
     <div class="panel stat-tile"><span class="v">${rec.w}<span class="dim">-</span>${rec.d}<span class="dim">-</span>${rec.l}</span><span class="k">Won-drawn-lost</span><span class="sub">${rec.games} game${rec.games === 1 ? "" : "s"} played</span></div>
     <div class="panel stat-tile"><span class="v">${formatPoints(rec.points)}</span><span class="k">Points</span><span class="sub">Win 1, draw ½</span></div>
     <div class="panel stat-tile"><span class="v">${esc(st.value)}</span><span class="k">Standing</span><span class="sub">${esc(st.sub)}</span></div>
@@ -258,7 +265,7 @@ function dashboard(id, viewer) {
     </section>
 
     <section class="s-block">
-      ${sectionHead("Form", "Rating", "history.", `${hist.length - 1} rated game${hist.length === 2 ? "" : "s"}. Elo, K = 32. Armageddon games are not rated.`)}
+      ${sectionHead("Form", "Rating", "history.", `${hist.length - 1} rated game${hist.length === 2 ? "" : "s"}. Elo, K = 32. ${tournamentUnrated() ? "This tournament is unrated, so its games don't appear here." : "Armageddon games are not rated."}`)}
       <div class="panel pad">${ratingChart(hist)}</div>
     </section>
 
@@ -399,7 +406,7 @@ function checklist() {
   const groupGames = store.matches.filter((m) => m.stage === "group");
   const scheduled = groupGames.filter((m) => m.scheduled_at).length;
   const finished = groupGames.filter((m) => m.status === "completed").length;
-  const knockout = bracketGames(store.matches).filter((m) => m.stage !== "group");
+  const knockout = bracketGames(store.matches).filter(isKnockout);
   const steps = [
     { label: "Player accounts", detail: `${players} of 32`, done: players >= 32, href: "admin.html#people" },
     { label: "Groups drawn", detail: `${store.groupPlayers.length} of 32 placed`, done: store.groupPlayers.length === 32, href: "admin.html#groups" },

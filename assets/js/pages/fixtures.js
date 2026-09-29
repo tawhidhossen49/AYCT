@@ -1,4 +1,4 @@
-import { store, involves, sortByTime, effectiveStatus, STAGE_LABEL } from "../store.js";
+import { store, involves, sortByTime, effectiveStatus, STAGE_LABEL, tournamentUnrated } from "../store.js";
 import { formatDate, serverNow } from "../time.js";
 import { emptyState, matchRowHtml } from "../ui.js";
 import { startPage } from "../page.js";
@@ -13,6 +13,7 @@ const FILTERS = [
   { id: "qf", label: "Quarterfinals", test: (m) => m.stage === "qf" },
   { id: "sf", label: "Semifinals", test: (m) => m.stage === "sf" },
   { id: "final", label: STAGE_LABEL.final, test: (m) => m.stage === "final" },
+  { id: "friendly", label: "Friendlies", test: (m) => m.stage === "friendly" },
 ];
 
 let filter = null;
@@ -41,7 +42,7 @@ function hero() {
     eyebrow: "Every game",
     bold: "Fixtures",
     soft: "& results.",
-    lede: "Every game in the tournament, in order. Open any game to watch the board live.",
+    lede: `Every game in the tournament, in order. Open any game to watch the board live.${tournamentUnrated() ? " This is an unrated tournament: results count for the tables, the bracket and the title, but ratings don't change." : ""}`,
     stats: [
       { value: store.matches.length, label: "Games" },
       { value: live, label: "Live now", live: live > 0 },

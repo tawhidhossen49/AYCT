@@ -1,4 +1,4 @@
-import { store, effectiveStatus, STAGE_LABEL } from "../store.js";
+import { store, effectiveStatus, isKnockout, STAGE_LABEL } from "../store.js";
 import { formatDate, formatTime, serverNow } from "../time.js";
 import { R16_PAIRINGS } from "../ops.js";
 import { emptyState, esc, liveTag, resultText } from "../ui.js";
@@ -15,7 +15,7 @@ const { draw } = await startPage("bracket", { render, hero });
 setInterval(draw, 30_000);
 
 function hero() {
-  const ko = store.matches.filter((m) => m.stage !== "group");
+  const ko = store.matches.filter(isKnockout);
   const decided = ko.filter((m) => m.winner_id).length;
   return {
     scene: "rising",
@@ -33,7 +33,7 @@ function hero() {
 
 function render() {
   const header = "";
-  const knockout = store.matches.filter((m) => m.stage !== "group");
+  const knockout = store.matches.filter(isKnockout);
 
   if (!knockout.length) {
     return `${header}${emptyState("The bracket is set after the group stage", "These are the round of 16 pairings, filled in once the group tables are final.")}

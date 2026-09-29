@@ -15,25 +15,38 @@ const motion = hasGsap && !reduced;
 
 // ---------------------------------------------------------------- data
 
-// The current edition's year is public.
-supabase
+// The current edition's year and registration status are public.
+const edition = supabase
   .from("tournaments")
-  .select("year")
+  .select("year, registration")
   .order("is_active", { ascending: false })
   .order("year", { ascending: false })
   .limit(1)
   .maybeSingle()
-  .then(({ data }) => {
-    if (data?.year) document.querySelectorAll("[data-year]").forEach((el) => (el.textContent = data.year));
-  });
+  .then(({ data }) => data);
+edition.then((data) => {
+  if (data?.year) document.querySelectorAll("[data-year]").forEach((el) => (el.textContent = data.year));
+});
 
-// Signed-in visitors go straight to their portal.
-currentProfile().then((p) => {
-  if (!p) return;
-  document.querySelectorAll("[data-portal-link]").forEach((a) => {
-    a.href = "home.html";
-    if (a.classList.contains("nav-cta")) a.innerHTML = `Open portal <i class="ph-bold ph-arrow-up-right"></i>`;
-  });
+// "Register now" says what the registration page will show: open, coming
+// soon or closed. Members who are already in get "Open portal" instead.
+Promise.all([edition, currentProfile()]).then(([data, profile]) => {
+  const arrow = `<i class="ph-bold ph-arrow-right"></i>`;
+  if (profile) {
+    document.querySelectorAll("[data-portal-link]").forEach((a) => {
+      a.href = "home.html";
+      if (a.classList.contains("nav-cta")) a.innerHTML = `Open portal <i class="ph-bold ph-arrow-up-right"></i>`;
+    });
+    document.querySelectorAll("[data-register-link]").forEach((a) => {
+      a.href = "home.html";
+      a.innerHTML = `Open the portal ${arrow}`;
+    });
+    return;
+  }
+  const form = data?.registration;
+  const closed = form?.status === "closed" || (form?.status === "open" && form.closes_at && Date.now() > Date.parse(form.closes_at));
+  const label = form?.status === "open" && !closed ? `Register now ${arrow}` : closed ? "Registration closed" : "Registration coming soon";
+  document.querySelectorAll("[data-register-link]").forEach((a) => (a.innerHTML = label));
 });
 
 // ---------------------------------------------------------------- static pieces (built for every visitor)

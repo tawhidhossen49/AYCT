@@ -80,7 +80,8 @@ assets/js/pages/*.js        One script per page
 
 supabase/migrations/        Database tables, security rules, rating and bracket logic
 supabase/functions/game/        Checks every move, runs the clocks, ends games
-supabase/functions/admin-users/ Creates and manages sign-ins (admins only)
+supabase/functions/admin-users/ Creates and manages sign-ins, registrations and test bots (admins only)
+supabase/functions/register/    Public registration form: checks answers, creates the applicant's sign-in
 ```
 
 Libraries (Supabase, chess.js, chessground, GSAP, Lenis, fonts, icons) load from CDNs,
@@ -120,6 +121,46 @@ the earliest move for draw offers are in Control Room, Tournament, Autopilot.
 Fair play: the two players can't see commentary until their game ends, the
 engine review only opens after the game, and leaving the game tab during play
 is logged for the arbiter (Control Room, Live and Activity).
+
+## Registration
+
+"Register now" on the main page opens `register.html`. Applicants fill in
+the form and choose their own password; they can't sign in until an admin
+accepts them.
+
+- Control Room, Registrations (admins only): open or close registration,
+  set an optional closing time, edit the message and the questions (add,
+  remove, reorder, make required; full name, email, password, school and
+  phone are built in).
+- New entries appear there live, and admins get an update in the bell.
+  "Add" asks only for a role (and a rating for players, taken from the
+  form if they gave one); name, email, school and password come from the
+  registration. Tick several and add them in one go. "Reject" removes the
+  sign-in; that person may register again.
+- The landing page buttons follow the status: Register now, Registration
+  coming soon, or Registration closed. Members who are already in see
+  "Open the portal".
+- Admins can still add people directly in People.
+
+## Rated and unrated games
+
+Every game is either rated or unrated. Only rated games change Elo
+ratings, so the leaderboard (ranked by rating, with W / D / L and +/-)
+reflects rated games only.
+
+- Rated or unrated tournament: once groups A to H are full, Control Room,
+  Groups asks how the tournament should count. A rated tournament changes
+  Elo ratings with every group and knockout game; an unrated one plays out
+  exactly the same (tables, bracket, Armageddon, champion) but nobody's
+  rating moves. Fixtures can't be generated until you choose. You can
+  switch later (Groups or Tournament tab): finished games gain or lose
+  their rating change straight away.
+- Any single game can still be switched in Control Room, Matches, edit
+  game, "Rated game".
+- Friendly matches (Control Room, Matches, Friendlies, New match) are
+  extra games between any two people, outside the groups and the bracket,
+  with their own clock. They are unrated unless you tick "Rated game".
+- Armageddon tiebreaks are always unrated.
 
 ## Running a tournament
 

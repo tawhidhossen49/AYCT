@@ -54,6 +54,7 @@ export function mountShell(profile, active) {
           <p class="name truncate">${esc(profile.full_name)}</p>
           <p class="role">${ROLE_LABEL[profile.role]}</p>
         </div>
+        <a class="btn btn-sm btn-ghost" href="index.html" data-main-site aria-label="Main site" title="Back to the main site">${icon("globe-hemisphere-west")}<span class="signout-label">Main site</span></a>
         <span data-bell></span>
         <button class="btn btn-sm" data-signout aria-label="Sign out">${icon("sign-out")}<span class="signout-label">Sign out</span></button>
       </div>

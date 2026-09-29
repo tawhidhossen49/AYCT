@@ -97,6 +97,41 @@ export async function scheduleRound(matches, when) {
   if (ids.length) check(await supabase.from("matches").update({ scheduled_at: when }).in("id", ids));
 }
 
+// Rated or unrated tournament: the edition and all its group and bracket
+// games at once. Finished games gain or lose their rating change.
+export async function setTournamentRated(tournamentId, rated) {
+  check(await supabase.rpc("set_tournament_rated", { p_tournament: tournamentId, p_rated: rated }));
+}
+
+// A friendly match outside the groups and the bracket, with its own clock.
+// It's created first and then given its start time, so both players get
+// the "game scheduled" update the database sends.
+export async function createFriendly({ tournamentId, whiteId, blackId, when, minutes, increment, rated }) {
+  const base = Math.round(minutes * 60_000);
+  const m = check(
+    await supabase
+      .from("matches")
+      .insert({
+        tournament_id: tournamentId,
+        stage: "friendly",
+        white_id: whiteId,
+        black_id: blackId,
+        white_base_ms: base,
+        black_base_ms: base,
+        increment_ms: Math.round(increment * 1000),
+        rated,
+      })
+      .select("*")
+      .single(),
+  );
+  return updateMatch(m.id, { scheduled_at: when });
+}
+
+// Deleting a finished game undoes its rating change (migration 0003).
+export async function deleteMatch(id) {
+  check(await supabase.from("matches").delete().eq("id", id));
+}
+
 export async function updateMatch(id, patch) {
   return check(await supabase.from("matches").update(patch).eq("id", id).select("*").single());
 }

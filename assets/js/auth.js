@@ -49,7 +49,7 @@ export async function signIn(email, password) {
   const profile = await loadProfile(data.user.id);
   if (!profile) {
     await supabase.auth.signOut();
-    throw new Error("Your sign-in works, but no tournament role is attached to it yet. Ask the tournament admin to add you.");
+    throw new Error("Thanks for registering! The organisers haven't confirmed your place yet. You can sign in once they accept your registration.");
   }
   return profile;
 }

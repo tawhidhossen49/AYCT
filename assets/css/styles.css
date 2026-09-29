@@ -1410,7 +1410,9 @@ a.feed-item:hover { background: var(--panel-2); }
 .ctl-auto > span.on::before { content: ""; display: inline-block; width: 0.4rem; height: 0.4rem; margin-right: 0.4rem; border-radius: 50%; background: #3ddc84; vertical-align: middle; }
 .ctl-auto .strong { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--fg); }
 .ctl-card { padding: 0.85rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.ctl-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.ctl-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-width: 0; }
+.ctl-head > .xs { min-width: 0; flex: 1 1 auto; }
+.ctl-head > .row { flex-shrink: 0; white-space: nowrap; }
 .ctl-player { display: flex; align-items: center; gap: 0.55rem; font-size: var(--text-sm); font-weight: 700; }
 .ctl-clock { padding: 0.15rem 0.5rem; border-radius: 6px; background: var(--panel-2); font-size: 0.85rem; color: var(--fg-muted); }
 .ctl-player.turn .ctl-clock { background: var(--chrome-grad); color: #0a0a0c; }
@@ -1435,3 +1437,83 @@ a.ctl-board { pointer-events: auto; display: block; }
 @media (min-width: 900px) { .test-panel .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .test-panel .step { display: flex; flex-direction: column; gap: 0.6rem; padding: 1rem; border-radius: var(--r-md); background: var(--panel); border: 1px solid var(--edge); }
 .test-panel .step .btn { margin-top: auto; align-self: flex-start; }
+
+/* Control Room: rated or unrated tournament. */
+.mode-panel.attention { border-color: var(--edge-2); box-shadow: 0 0 0 1px rgb(228 231 236 / 0.25), 0 0 60px -20px rgb(228 231 236 / 0.45); }
+.mode-grid { display: grid; gap: 0.75rem; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 768px) { .mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.mode-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 1.1rem 1.2rem; text-align: left; border-radius: var(--r-md); border: 1px solid var(--edge); background: var(--panel); transition: border-color var(--fast), background-color var(--fast); }
+.mode-card:hover { border-color: rgb(255 255 255 / 0.28); background: var(--panel-2); }
+.mode-card.on { border-color: transparent; background: linear-gradient(145deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.04)); box-shadow: inset 0 0 0 1px var(--chrome); }
+.mode-icon { width: 2.2rem; height: 2.2rem; display: grid; place-items: center; border-radius: var(--r-sm); background: var(--panel-2); border: 1px solid var(--edge); color: var(--chrome); }
+.mode-title { font-family: var(--font-display); font-stretch: 112%; font-weight: 800; text-transform: uppercase; font-size: 1.05rem; }
+.mode-body { font-size: var(--text-sm); color: var(--fg-muted); }
+.mode-tick { position: absolute; top: 1rem; right: 1rem; display: inline-flex; align-items: center; gap: 0.3rem; font-size: var(--text-xs); font-weight: 800; color: var(--fg); }
+
+/* Registration page: the sign-in layout, with a longer card that scrolls. */
+.login.register { overflow: visible; align-items: start; padding-top: 6rem; padding-bottom: 4rem; }
+@media (min-width: 1024px) { .login.register { place-items: start; padding-top: 7rem; } }
+.register .login-art { position: fixed; }
+.register-card { max-width: 38rem; }
+.register-msg { padding: 0.5rem 0 0.25rem; }
+.register-msg > i { font-size: 2rem; color: var(--chrome); }
+.register-msg h2 { margin-top: 0.8rem; font-family: var(--font-display); font-stretch: 125%; font-weight: 800; text-transform: uppercase; font-size: 1.4rem; line-height: 1.05; }
+.register-msg p { margin-top: 0.6rem; }
+.optional { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--fg-dim); }
+.check-field { display: flex; gap: 0.75rem; align-items: flex-start; cursor: pointer; font-size: var(--text-sm); }
+.check-field input { width: 1.1rem; height: 1.1rem; flex-shrink: 0; margin-top: 0.15rem; accent-color: #d9dce2; }
+/* A field only bots see and fill in. */
+.trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+
+/* Control Room: registration form editor and applicants. */
+.tab-count { display: inline-grid; place-items: center; min-width: 1.2rem; height: 1.2rem; margin-left: 0.35rem; padding: 0 0.3rem; border-radius: 999px; background: var(--signal); color: #fff; font-family: var(--font-mono); font-size: 0.62rem; font-weight: 700; }
+.q-list { display: grid; gap: 0.5rem; }
+.q-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.6rem; align-items: center; padding: 0.6rem; border: 1px solid var(--edge); border-radius: var(--r-md); background: var(--panel); }
+@media (min-width: 768px) { .q-row { grid-template-columns: auto minmax(0, 1fr) 11rem auto 2.4rem; } }
+.q-move { display: flex; flex-direction: column; }
+.q-move .icon-btn { width: 1.8rem; height: 1.4rem; }
+.q-move .icon-btn:disabled { opacity: 0.25; }
+.q-type { grid-column: 2; }
+.q-req { display: inline-flex; align-items: center; gap: 0.4rem; font-size: var(--text-xs); color: var(--fg-muted); white-space: nowrap; grid-column: 2; }
+.q-req input { accent-color: #d9dce2; }
+@media (min-width: 768px) { .q-type, .q-req { grid-column: auto; } }
+.q-lock { display: grid; place-items: center; width: 2.4rem; color: var(--fg-dim); }
+.reg-row { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr); gap: 0.4rem 0.9rem; align-items: start; padding: 0.9rem 1rem; border-radius: var(--r-md); }
+.reg-row + .reg-row { border-top: 1px solid rgb(255 255 255 / 0.04); }
+.reg-row:hover { background: var(--panel-2); }
+.reg-row.done { opacity: 0.75; }
+@media (min-width: 900px) { .reg-row { grid-template-columns: 1.6rem minmax(0, 1.2fr) minmax(0, 1fr) 7rem auto; align-items: center; } }
+.reg-pick input, .reg-all input { width: 1.05rem; height: 1.05rem; accent-color: #d9dce2; }
+.reg-who, .reg-contact { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.reg-contact span, .reg-who span { overflow: hidden; text-overflow: ellipsis; }
+.reg-row > :not(.reg-pick):not(.reg-who) { grid-column: 2; }
+@media (min-width: 900px) { .reg-row > :not(.reg-pick):not(.reg-who) { grid-column: auto; } }
+.reg-actions { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end; }
+.reg-more summary { cursor: pointer; color: var(--fg-muted); margin-top: 0.3rem; }
+.reg-more dl { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 0.8rem; margin: 0.5rem 0 0; font-size: var(--text-xs); }
+.reg-more dt { color: var(--fg-dim); }
+.reg-more dd { margin: 0; }
+.reg-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-bottom: 0.8rem; padding: 0.7rem 0.9rem; border-radius: var(--r-md); border: 1px solid var(--edge-2); background: linear-gradient(145deg, rgb(255 255 255 / 0.1), rgb(255 255 255 / 0.03)); font-size: var(--text-sm); }
+.reg-bulk select { width: auto; }
+.reg-all { display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 1rem 0.2rem; }
+
+/* Top bar on mid-size screens: the full nav, the portal switch and the
+   account buttons all fit by trading words for icons until there's room. */
+@media (min-width: 900px) and (max-width: 1279px) {
+  .signout-label, .account-text { display: none; }
+  .nav a { padding: 0.5rem 0.62rem; }
+  .topbar-inner { gap: 0.8rem; }
+}
+@media (min-width: 900px) and (max-width: 1100px) {
+  .brand-text { display: none; }
+}
+@media (min-width: 640px) and (max-width: 899px) {
+  .signout-label, .account-text { display: none; }
+  .portal-switch a span { display: none; }
+}
+/* Staff also carry the Portal / Control room switch: on wide screens their
+   name (already in the page header) and the Main site label make way. */
+@media (min-width: 1280px) {
+  .topbar:has(.portal-switch) .account-text,
+  .topbar:has(.portal-switch) [data-main-site] .signout-label { display: none; }
+}

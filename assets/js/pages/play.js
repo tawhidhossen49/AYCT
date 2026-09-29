@@ -10,6 +10,7 @@ import { callFunction, supabase } from "../supabase.js";
 import {
   store, loadAll, subscribe, upsertMatch, effectiveStatus, matchContext, involves, sortByTime,
   baseClocks, timeControlLabel,
+  isKnockout, isRated,
 } from "../store.js";
 import { countdownHtml, formatClock, formatDateTime, formatTime, serverNow, startCountdowns, syncServerClock } from "../time.js";
 import { botTag, emptyState, esc, icon, liveTag, mountShell, notice, openModal, playerHtml, resultText, sectionHead } from "../ui.js";
@@ -482,6 +483,7 @@ function renderHead() {
     <div class="title">${st === "live" ? liveTag() : ""}<h1>${esc(matchContext(m))}</h1>${badge}</div>
     <div class="meta">
       <span>${icon("timer")} ${timeControlLabel(m)}</span>
+      <span>${icon(isRated(m) ? "chart-line-up" : "minus-circle")} ${isRated(m) ? "Rated" : "Unrated"}</span>
       ${m.scheduled_at ? `<span>${icon("calendar-blank")} ${formatDateTime(m.scheduled_at)}</span>` : ""}
       <span>${icon("users")} <b data-viewers>${S.viewers}</b> watching</span>
     </div>`;
@@ -817,6 +819,7 @@ function renderInfo() {
       <dt>Stage</dt><dd>${esc(matchContext(m))}</dd>
       <dt>White</dt><dd>${esc(nameOf(m.white_id))}</dd>
       <dt>Black</dt><dd>${esc(nameOf(m.black_id))}</dd>
+      <dt>Rated</dt><dd>${isRated(m) ? "Yes, ratings change" : "No, ratings don't change"}</dd>
       <dt>Time control</dt><dd>${Math.round(c.white / 60000)}${c.white !== c.black ? ` | ${Math.round(c.black / 60000)}` : ""} min + ${Math.round(c.increment / 1000)} s</dd>
       <dt>Start</dt><dd>${m.scheduled_at ? formatDateTime(m.scheduled_at) : "Not scheduled"}</dd>
       ${m.status === "completed" ? `<dt>Result</dt><dd>${resultText(m)}</dd>` : ""}
@@ -1316,7 +1319,7 @@ function showResult() {
     const d = colour === "white" ? m.white_rating_delta : m.black_rating_delta;
     return `<div class="p${winnerColour === colour ? " won" : ""}"><div class="avatar ${colour}" style="width:3.4rem;height:3.4rem;font-size:1.2rem">${esc(initials(nameOf(id)))}</div><span class="n">${esc(nameOf(id))}</span>${d != null ? `<span class="delta ${d > 0 ? "up" : d < 0 ? "down" : ""}">${store.profileById.get(id)?.rating ?? ""} (${delta(d)})</span>` : ""}</div>`;
   };
-  const knockoutDraw = m.stage !== "group" && !m.tiebreak_of && m.result === "1/2-1/2" && !m.winner_id;
+  const knockoutDraw = isKnockout(m) && !m.tiebreak_of && m.result === "1/2-1/2" && !m.winner_id;
   const tb = tiebreakOf();
   const d = openModal(
     "Game over",
