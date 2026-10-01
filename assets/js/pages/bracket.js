@@ -15,17 +15,20 @@ const { draw } = await startPage("bracket", { render, hero });
 setInterval(draw, 30_000);
 
 function hero() {
-  const ko = store.matches.filter(isKnockout);
+  // The road to the final: the third-place game is counted with the games,
+  // but it doesn't knock anyone out.
+  const ko = store.matches.filter((m) => isKnockout(m) && !m.tiebreak_of);
   const decided = ko.filter((m) => m.winner_id).length;
+  const out = ko.filter((m) => m.winner_id && m.stage !== "third").length;
   return {
     scene: "rising",
     eyebrow: "Knockout",
     bold: "The road",
     soft: "to the crown.",
-    lede: "Single games from the round of 16 to the final. Group winners play white against a runner-up from the neighbouring group.",
+    lede: "Single games from the round of 16 to the final, with a third-place game for the semifinal losers. Group winners play white against a runner-up from the neighbouring group.",
     stats: [
-      { value: ko.length ? 16 - decided : 16, label: "Players left" },
-      { value: decided, label: `of ${ko.length || 15} decided` },
+      { value: 16 - out, label: "Players left" },
+      { value: decided, label: `of ${ko.length || 16} decided` },
       { value: 4, label: "Rounds" },
     ],
   };
@@ -33,7 +36,9 @@ function hero() {
 
 function render() {
   const header = "";
-  const knockout = store.matches.filter(isKnockout);
+  // Armageddon tiebreaks aren't drawn as their own cards: the drawn game
+  // they settle shows who went through.
+  const knockout = store.matches.filter((m) => isKnockout(m) && !m.tiebreak_of);
 
   if (!knockout.length) {
     return `${header}${emptyState("The bracket is set after the group stage", "These are the round of 16 pairings, filled in once the group tables are final.")}
@@ -47,6 +52,11 @@ function render() {
     const items = knockout.filter((m) => m.stage === stage).sort((a, b) => a.bracket_slot - b.bracket_slot);
     const step = unit * 2 ** ci;
     const offset = (step - unit) / 2;
+    // The third-place game sits under the final.
+    const third = stage === "final" ? knockout.find((m) => m.stage === "third" && !m.tiebreak_of) : null;
+    const thirdCard = third
+      ? `<div class="bracket-slot third" style="top:${offset + CARD_H + 56}px;height:${CARD_H}px"><span class="bracket-label">${STAGE_LABEL.third}</span>${card(third)}</div>`
+      : "";
     const cards = items
       .map((m, i) => {
         const connector = ci < COLUMNS.length - 1 ? `<span class="connector ${i % 2 === 0 ? "down" : "up"}" style="height:${step / 2}px" aria-hidden="true"></span>` : "";
@@ -56,7 +66,7 @@ function render() {
       .join("");
     return `<div>
       <h2>${stage === "final" ? `<i class="ph-fill ph-trophy" style="color:var(--chrome)"></i>` : ""}${STAGE_LABEL[stage]}</h2>
-      <div class="bracket-col${stage === "final" ? " final-col" : ""}" style="height:${unit * 8 - GAP}px">${cards}</div>
+      <div class="bracket-col${stage === "final" ? " final-col" : ""}" style="height:${unit * 8 - GAP}px">${cards}${thirdCard}</div>
     </div>`;
   }).join("");
 
@@ -68,11 +78,11 @@ function card(m) {
   const line = (id) => {
     const p = id ? store.profileById.get(id) : null;
     const cls = m.winner_id ? (m.winner_id === id ? " won" : id ? " lost" : "") : "";
-    return `<span class="line${cls}"><span class="pname truncate">${p ? esc(p.full_name) : `<span class="dim">To be decided</span>`}</span>${p ? `<span class="num xs dim">${p.rating}</span>` : ""}</span>`;
+    return `<span class="line${cls}"><span class="pname truncate">${p ? esc(p.full_name) : `<span class="dim">To be decided</span>`}</span></span>`;
   };
   let foot;
   if (status === "live") foot = liveTag();
-  else if (status === "completed") foot = `<span class="num">${resultText(m)}${m.result === "1/2-1/2" && !m.winner_id ? " · tiebreak pending" : ""}</span>`;
+  else if (status === "completed") foot = `<span class="num">${resultText(m)}${m.result === "1/2-1/2" ? (m.winner_id ? " · won the Armageddon" : " · tiebreak pending") : ""}</span>`;
   else if (m.scheduled_at) foot = `${formatDate(m.scheduled_at)}, ${formatTime(m.scheduled_at)}`;
   else foot = "Not scheduled";
   return `<a href="play.html?id=${m.id}" class="panel bracket-card${status === "live" ? " live" : ""}">${line(m.white_id)}${line(m.black_id)}<span class="foot">${foot}</span></a>`;

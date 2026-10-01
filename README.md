@@ -18,44 +18,43 @@ the folder as it is.
 
 ## Format
 
-- 32 players in 8 groups of 4 (A to H), drawn World Cup style: four pots
-  by rating, one player from each pot per group.
+- 32 players in 8 groups of 4 (A to H), dealt by a random draw (or placed
+  by hand).
 - Each group plays a round robin over 3 rounds (6 games per group, 48 in all).
 - The top 2 of each group reach a single-game knockout:
   round of 16, quarterfinals, semifinals, final. Group winners play white
   against a runner-up from the neighbouring group (A1 v B2, B1 v A2, ...).
+- The semifinal losers play a third-place match, so there are 64 games in
+  all: 48 in the groups and 16 in the knockout.
 - Group tables: win 1, draw ½. Ties go to Sonneborn-Berger, then wins,
-  then head-to-head, then rating.
+  then head-to-head, then the order of the draw.
 - A drawn knockout game needs a tiebreak winner, which a moderator records.
-- Every finished game updates both players' Elo ratings (K = 32). Resetting
-  or correcting a result reverses the change.
 
 ## Roles
 
 | Role        | Can do |
 |-------------|--------|
 | Admin       | Everything, including creating, editing and deleting accounts |
-| Moderator   | Editions, group draw, fixtures, schedules, results, bracket |
+| Moderator   | Editions, group draw, fixtures, schedules, results, bracket, the organising team room |
 | Commentator | Watch every board and post live commentary beside a game |
-| Player      | See groups, fixtures, bracket and leaderboard, and play their own games |
+| Player      | See groups, fixtures and the bracket, and play their own games |
 
-There is no public sign-up. Admins create every account under Control Room, People.
+There is no sign-up on the site. Players register in a Google Form, and admins create every account under Control Room, People.
 
 ## Files
 
 ```
 index.html          Public landing page (hero, format, road to the crown, groups, live board, roles, FAQ)
 login.html          Sign in
-home.html           Dashboard. Players: next game, updates, record, rating history, group, results.
+home.html           Dashboard. Players: next game, updates, record, form, group, results.
                     Staff: organiser overview, and any player's dashboard (home.html?player=...)
 play.html           The Arena: play, watch, arbitrate and review games (play.html?id=...);
                     without an id, the Arena lobby (your board, live games, finished games)
 fixtures.html       Every game, filterable by round
 groups.html         The eight group tables
-bracket.html        Round of 16 to the final
-leaderboard.html    Players by rating
+bracket.html        Round of 16 to the final, with the third-place match
 match.html          Old game links; forwards to play.html
-admin.html          Control Room (#live, #tournament, #people, #groups, #matches, #knockout, #activity)
+admin.html          Control Room (#live, #team, #tournament, #registrations, #people, #groups, #matches, #knockout, #activity)
 
 assets/css/styles.css       Design system and portal styling
 assets/css/landing.css      Landing page sections
@@ -68,6 +67,7 @@ assets/js/store.js          Loads the tournament and keeps it live
 assets/js/ops.js            Staff actions: draw, fixtures, scheduling, bracket
 assets/js/standings.js      Group tables and tiebreaks
 assets/js/time.js           Server-synced clock, countdowns
+assets/js/registration.js   Checks the Google Form link used by "Register now"
 assets/js/board.js          Chessboard (chessground) and rules (chess.js)
 assets/js/ui.js             Header, match rows, group tables, dialogs
 assets/js/page.js           What every page does first
@@ -78,10 +78,10 @@ assets/js/arena/sounds.js   Move, capture, check and clock sounds (Web Audio, no
 assets/js/arena/engine.js   Stockfish game review (after the game only)
 assets/js/pages/*.js        One script per page
 
-supabase/migrations/        Database tables, security rules, rating and bracket logic
+supabase/migrations/        Database tables, security rules, automation and bracket logic
 supabase/functions/game/        Checks every move, runs the clocks, ends games
-supabase/functions/admin-users/ Creates and manages sign-ins, registrations and test bots (admins only)
-supabase/functions/register/    Public registration form: checks answers, creates the applicant's sign-in
+supabase/functions/admin-users/ Creates and manages sign-ins and test bots (admins only)
+supabase/functions/register/    Retired: the old on-site registration endpoint, now switched off
 ```
 
 Libraries (Supabase, chess.js, chessground, GSAP, Lenis, fonts, icons) load from CDNs,
@@ -108,12 +108,11 @@ then saves the new position. It follows the FIDE Online Chess Regulations:
 - Players get updates (bell, toast, dashboard) when a game is scheduled or
   moved, 10 minutes before it starts, when it ends, when they advance, and
   when the arbiter messages them.
-- Ratings (Elo, K = 32) update when a game ends and reverse if a result is
-  changed, reset or deleted.
 - A drawn knockout game gets an Armageddon game, colours reversed: White 5
-  minutes, Black 4, +2 seconds, Black goes through on a draw. It is not rated.
+  minutes, Black 4, +2 seconds, Black goes through on a draw.
 - When the last group game ends, the round of 16 is drawn from the tables.
-- Winners move into the next round; the final's winner completes the event.
+- Winners move into the next round and the semifinal losers into the
+  third-place match; the final's winner completes the event.
 
 The two switches (Armageddon, bracket after groups), the Armageddon delay and
 the earliest move for draw offers are in Control Room, Tournament, Autopilot.
@@ -124,49 +123,41 @@ is logged for the arbiter (Control Room, Live and Activity).
 
 ## Registration
 
-"Register now" on the main page opens `register.html`. Applicants fill in
-the form and choose their own password; they can't sign in until an admin
-accepts them.
+Players register in a Google Form, not on the site.
 
-- Control Room, Registrations (admins only): open or close registration,
-  set an optional closing time, edit the message and the questions (add,
-  remove, reorder, make required; full name, email, password, school and
-  phone are built in).
-- New entries appear there live, and admins get an update in the bell.
-  "Add" asks only for a role (and a rating for players, taken from the
-  form if they gave one); name, email, school and password come from the
-  registration. Tick several and add them in one go. "Reject" removes the
-  sign-in; that person may register again.
-- The landing page buttons follow the status: Register now, Registration
-  coming soon, or Registration closed. Members who are already in see
-  "Open the portal".
-- Admins can still add people directly in People.
+- Control Room, Registrations (admins only): paste the Google Form link
+  and save. "Register now" on the main page then opens the form in a new
+  tab.
+- While there is no link, the main page buttons say "Registration coming
+  soon" and go nowhere. Remove the link to close registration.
+- Answers stay in Google Forms. Once a player is confirmed, an admin
+  creates their account in Control Room, People and sends them their
+  sign-in.
+- Members who are already signed in see "Open the portal" instead.
 
-## Rated and unrated games
+## Organising team
 
-Every game is either rated or unrated. Only rated games change Elo
-ratings, so the leaderboard (ranked by rating, with W / D / L and +/-)
-reflects rated games only.
+Control Room, Organising team is where admins and moderators run the event
+together. Players and commentators can't see it.
 
-- Rated or unrated tournament: once groups A to H are full, Control Room,
-  Groups asks how the tournament should count. A rated tournament changes
-  Elo ratings with every group and knockout game; an unrated one plays out
-  exactly the same (tables, bracket, Armageddon, champion) but nobody's
-  rating moves. Fixtures can't be generated until you choose. You can
-  switch later (Groups or Tournament tab): finished games gain or lose
-  their rating change straight away.
-- Any single game can still be switched in Control Room, Matches, edit
-  game, "Rated game".
-- Friendly matches (Control Room, Matches, Friendlies, New match) are
-  extra games between any two people, outside the groups and the bracket,
-  with their own clock. They are unrated unless you tick "Rated game".
-- Armageddon tiebreaks are always unrated.
+- On duty: everyone on the team, with a green dot for those who have the
+  Control Room open and which tab they are on.
+- Task board: To do, In progress, Done. Each task has an owner and a due
+  time; overdue tasks are marked. "Add the standard checklist" fills in
+  the usual jobs for one edition. Whoever is given a task gets an update.
+- Team chat: staff-only messages, live. Pin the ones everyone should see.
+- Arbiters: put a team member on each game, or "Share out evenly". The
+  arbiter gets an update and their name shows on the game's Live card.
+
+Friendly matches (Control Room, Matches, Friendlies, New match) are extra
+games between any two people, outside the groups and the bracket, with
+their own clock.
 
 ## Running a tournament
 
 1. Control Room, Tournament: create the edition (year, time control).
-2. Control Room, People: add the 32 players (with ratings), moderators and commentators.
-3. Control Room, Groups: run the seeded draw, or place players by hand.
+2. Control Room, People: add the 32 players, moderators and commentators.
+3. Control Room, Groups: run the random draw, or place players by hand.
 4. Control Room, Matches: generate the group fixtures, then set a start time per round.
 5. Games are played on the site. Staff can also enter results for games
    played over the board, or correct them.

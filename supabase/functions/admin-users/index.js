@@ -6,9 +6,6 @@
 // POST { action: "delete", id }
 // POST { action: "fill_bots", tournament_id }   test bots in every empty group slot
 // POST { action: "remove_bots" }                 every bot and every game they played
-// POST { action: "accept_registration", id, role, rating? }   applicant becomes a portal member
-// POST { action: "reject_registration", id }
-// POST { action: "delete_registration", id }
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -140,59 +137,6 @@ Deno.serve(async (req) => {
       await admin.from("tournaments").update({ status: count ? "groups" : "setup" }).eq("id", t);
     }
     return json({ removed: ids.length, games: gameIds.length });
-  }
-
-  // Registrations (register.html). The applicant's sign-in already exists
-  // with the password they chose; accepting gives it a portal profile, so
-  // the admin only picks a role.
-  if (["accept_registration", "reject_registration", "delete_registration"].includes(body.action)) {
-    const { data: reg } = await admin.from("registrations").select("*").eq("id", str(body.id)).maybeSingle();
-    if (!reg) return json({ error: "Registration not found" }, 404);
-    const reviewed = { reviewed_at: new Date().toISOString(), reviewed_by: userData.user.id };
-
-    if (body.action === "accept_registration") {
-      if (reg.status === "accepted") return json({ error: `${reg.full_name} is already in the portal` }, 409);
-      if (!reg.user_id) return json({ error: "This registration was rejected, so its sign-in was removed. Ask them to register again." }, 409);
-      const answered = Number(reg.answers?.rating);
-      const playerRating = rating ?? (Number.isInteger(answered) && answered > 0 && answered <= 3500 ? answered : 1000);
-      const { data: profile, error } = await admin
-        .from("profiles")
-        .insert({
-          id: reg.user_id,
-          email: reg.email,
-          full_name: reg.full_name,
-          role: role || "player",
-          rating: (role || "player") === "player" ? playerRating : 1000,
-          school: reg.school,
-        })
-        .select("*")
-        .single();
-      if (error) return json({ error: /duplicate/i.test(error.message) ? `${reg.full_name} already has a portal account` : error.message }, 400);
-      await admin.from("registrations").update({ status: "accepted", role: role || "player", ...reviewed }).eq("id", reg.id);
-      await admin.from("notifications").insert({
-        user_id: reg.user_id,
-        kind: "message",
-        title: "Welcome to the tournament",
-        body: "Your registration has been accepted. Your group and games will appear here.",
-        link: "home.html",
-      });
-      return json({ profile });
-    }
-
-    // Rejecting or deleting an entry that was never accepted also removes its
-    // sign-in, so the same email can register again later.
-    const { data: hasProfile } = reg.user_id
-      ? await admin.from("profiles").select("id").eq("id", reg.user_id).maybeSingle()
-      : { data: null };
-    if (reg.user_id && !hasProfile) await admin.auth.admin.deleteUser(reg.user_id);
-
-    if (body.action === "reject_registration") {
-      if (reg.status === "accepted") return json({ error: "Accepted players are removed from People, not here" }, 409);
-      await admin.from("registrations").update({ status: "rejected", user_id: null, ...reviewed }).eq("id", reg.id);
-      return json({ ok: true });
-    }
-    await admin.from("registrations").delete().eq("id", reg.id);
-    return json({ ok: true });
   }
 
   if (body.action === "create") {

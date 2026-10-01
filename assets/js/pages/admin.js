@@ -1,16 +1,17 @@
 // The Control Room: the organisers' side of the portal. Live boards with
-// arbiter tools, editions and autopilot, accounts, the group draw, fixtures
-// and results, the knockout bracket, and the activity log. Moderators get
-// everything except accounts.
+// arbiter tools, the organising team's room, editions and autopilot, accounts,
+// the group draw, fixtures and results, the knockout bracket, and the activity
+// log. Moderators get everything except accounts.
 
 import { ROLE_LABEL } from "../auth.js";
 import { callFunction, supabase } from "../supabase.js";
-import { store, loadAll, loadEmails, subscribe, sortByTime, STAGE_LABEL, effectiveStatus, matchContext, baseClocks, bracketGames, isKnockout, isFriendly, tournamentMode } from "../store.js";
+import { store, loadAll, loadEmails, subscribe, sortByTime, STAGE_LABEL, effectiveStatus, matchContext, baseClocks, bracketGames, isKnockout, isFriendly } from "../store.js";
 import { formatClock, formatDateTime, formatTime, fromLocalInput, serverNow, toLocalInput } from "../time.js";
 import { TIEBREAK_NOTE } from "../standings.js";
+import { formLink } from "../registration.js";
 import {
   clearGroups, createTournament, generateGroupFixtures, generateKnockout, qualifiers, R16_PAIRINGS,
-  createFriendly, deleteMatch, resetGame, setTournamentRated, resetRealTestGames, scheduleRound, seededDraw, sendMessage, simulateGames, setActiveTournament, setGroupSlot, updateMatch, updateTournament,
+  createFriendly, deleteMatch, resetGame, randomDraw, resetRealTestGames, scheduleRound, sendMessage, simulateGames, setActiveTournament, setGroupSlot, updateMatch, updateTournament,
 } from "../ops.js";
 import { emptyState, esc, icon, liveTag, modalOpen, notice, openModal, playerHtml, statusHtml, withBusy } from "../ui.js";
 import { mountMiniBoards } from "../board.js";
@@ -20,6 +21,7 @@ import { animateIn } from "../motion.js";
 
 const TABS = [
   { id: "live", label: "Live" },
+  { id: "team", label: "Organising team" },
   { id: "tournament", label: "Tournament" },
   { id: "registrations", label: "Registrations", admin: true },
   { id: "people", label: "People" },
@@ -29,18 +31,6 @@ const TABS = [
   { id: "activity", label: "Activity" },
 ];
 const ROLES = ["player", "moderator", "commentator", "admin"];
-// Registration form: answer types, and whether the form is open.
-const FIELD_TYPES = [
-  ["text", "Short answer"],
-  ["textarea", "Long answer"],
-  ["email", "Email"],
-  ["tel", "Phone number"],
-  ["number", "Number"],
-  ["date", "Date"],
-  ["choice", "Choose one"],
-  ["checkbox", "Tick box"],
-];
-const REG_STATUS = { soon: "Coming soon", open: "Open", closed: "Closed" };
 const STATUS_LABEL = { setup: "Setting up", groups: "Group stage", knockout: "Knockout stage", complete: "Complete" };
 const ROUNDS = [
   { key: "g1", label: "Group round 1", test: (m) => m.stage === "group" && m.round === 1 },
@@ -49,27 +39,32 @@ const ROUNDS = [
   { key: "r16", label: STAGE_LABEL.r16, test: (m) => m.stage === "r16" },
   { key: "qf", label: "Quarterfinals", test: (m) => m.stage === "qf" },
   { key: "sf", label: "Semifinals", test: (m) => m.stage === "sf" },
+  { key: "third", label: STAGE_LABEL.third, test: (m) => m.stage === "third" },
   { key: "final", label: STAGE_LABEL.final, test: (m) => m.stage === "final" },
   { key: "friendly", label: "Friendlies", test: (m) => m.stage === "friendly" },
 ];
 
-// View state that survives redraws, plus what the Live and Activity tabs
-// watch: who is in which game room, and the fair-play log.
+// View state that survives redraws, plus what the Live, Organising team and
+// Activity tabs watch: who is in which game room, the team's tasks and chat,
+// and the fair-play log.
 const ui = {
   roleFilter: "all",
   query: "",
   round: "g1",
   testMsg: "",
+  // Organising team tab
+  taskFilter: "all",
+  arbFilter: "open",
+  chatDraft: "",
   // Registrations tab
-  regs: null,
-  regFilter: "new",
-  regQuery: "",
-  regSelected: new Set(),
-  formDraft: null,
-  formDraftFor: null,
-  formDirty: false,
+  regMsg: "",
+  regDraft: null,
+  regErr: "",
 };
-const watch = { presence: new Map(), goneSince: new Map(), events: [], notes: [], loaded: false, botAsked: new Map(), drawTimer: null, lastDraw: 0 };
+const watch = {
+  presence: new Map(), goneSince: new Map(), events: [], notes: [], loaded: false, botAsked: new Map(), drawTimer: null, lastDraw: 0,
+  team: { tasks: [], messages: [], online: new Map(), loaded: false, error: "", seenAt: 0 },
+};
 // How the fair-play log reads.
 const EVENT_TEXT = {
   joined: "opened the game room",
@@ -119,20 +114,26 @@ function currentTab() {
   return visibleTabs().some((t) => t.id === id) ? id : store.tournament ? "live" : "tournament";
 }
 
-// Registrations are admin-only (they create accounts).
+// The registration form link is set by admins.
 function visibleTabs() {
   return TABS.filter((t) => !t.admin || profile.role === "admin");
 }
 
 function draw() {
   const tab = currentTab();
-  const fresh = (ui.regs ?? []).filter((r) => r.status === "new").length;
   const tabs = `<nav class="tabs" aria-label="Admin sections">${visibleTabs()
-    .map((t) => `<a class="tab${t.id === tab ? " active" : ""}" href="#${t.id}">${t.label}${t.id === "registrations" && fresh ? ` <span class="tab-count">${fresh}</span>` : ""}</a>`)
+    .map((t) => `<a class="tab${t.id === tab ? " active" : ""}" href="#${t.id}">${t.label}${tabCount(t.id, tab) ? ` <span class="tab-count">${tabCount(t.id, tab)}</span>` : ""}</a>`)
     .join("")}</nav>`;
-  const body = { live: liveTab, tournament: tournamentTab, registrations: registrationsTab, people: peopleTab, groups: groupsTab, matches: matchesTab, knockout: knockoutTab, activity: activityTab }[tab]();
+  const body = { live: liveTab, team: teamTab, tournament: tournamentTab, registrations: registrationsTab, people: peopleTab, groups: groupsTab, matches: matchesTab, knockout: knockoutTab, activity: activityTab }[tab]();
   app.innerHTML = tabs + (store.error ? notice(esc(store.error), "error") : "") + testBanner(tab) + body;
   if (tab === "live") mountMiniBoards(app);
+  if (tab === "team") teamShown();
+}
+
+// The small number on a tab: unread team messages.
+function tabCount(id, current) {
+  if (id === "team" && current !== "team") return teamUnread();
+  return 0;
 }
 
 async function refresh() {
@@ -173,6 +174,11 @@ setInterval(() => {
 // ---------------------------------------------------------------- live watch: presence and the fair-play log
 
 async function startWatching() {
+  loadTeam().then(() => {
+    watchTeam();
+    if (currentTab() === "team") calmDraw();
+    else scheduleDraw();
+  });
   const [ev, notes] = await Promise.all([
     supabase.from("game_events").select("*").order("created_at", { ascending: false }).limit(150),
     supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(60),
@@ -316,6 +322,9 @@ function liveTab() {
     ${who(m, "black")}
     <a class="mini-board ctl-board" href="play.html?id=${m.id}" data-mini-fen="${esc(m.fen)}" aria-label="Open ${first(m.white_id)} against ${first(m.black_id)}"></a>
     ${who(m, "white")}
+    <div class="ctl-arb">${icon("gavel")}${m.arbiter_id
+      ? `<span class="truncate">Arbiter: ${teamName(m.arbiter_id)}</span>`
+      : `<span>No arbiter</span><button class="btn btn-sm btn-ghost" data-action="team-arb-take" data-id="${m.id}">Take it</button>`}</div>
     <div class="ctl-alerts">${alertsFor(m)}</div>
     <div class="ctl-actions">
       <a class="btn btn-sm btn-primary" href="play.html?id=${m.id}">${icon("gavel", "bold")} Arbiter view</a>
@@ -336,7 +345,6 @@ function liveTab() {
   return `<div class="stack gap-8">
     <div class="ctl-auto">
       <span class="strong">${icon("robot", "bold")} Autopilot</span>
-      <span class="${tournamentMode() ? "on" : ""}">${tournamentMode() === "unrated" ? "Unrated tournament" : tournamentMode() === "rated" ? "Rated tournament" : "Rated or unrated: not chosen"}</span>
       <span class="${t.auto_tiebreak ? "on" : ""}">Armageddon tiebreaks ${t.auto_tiebreak ? "on" : "off"}</span>
       <span class="${t.auto_knockout ? "on" : ""}">Bracket after groups ${t.auto_knockout ? "on" : "off"}</span>
       <span class="on">Timeouts and no-shows</span>
@@ -426,7 +434,7 @@ function tournamentTab() {
     : "";
   const autopilot = t
     ? `<form class="panel pad form-grid md-2" data-form="autopilot">
-        <div class="span-2"><h2 class="section-title">${icon("robot", "bold")} Autopilot</h2><p class="small muted mt-1">What the tournament does by itself. Timeouts, no-shows, ratings, standings, advancement and reminders always run.</p></div>
+        <div class="span-2"><h2 class="section-title">${icon("robot", "bold")} Autopilot</h2><p class="small muted mt-1">What the tournament does by itself. Timeouts, no-shows, standings, advancement and reminders always run.</p></div>
         <label class="row gap-3 span-2" style="cursor:pointer"><input type="checkbox" name="auto_tiebreak" ${t.auto_tiebreak ? "checked" : ""} style="width:1.1rem;height:1.1rem;flex-shrink:0;accent-color:#d9dce2"><span><span class="strong small" style="display:block">Armageddon tiebreaks</span><span class="hint">When a knockout game is drawn, create an Armageddon game with colours reversed: White 5 min, Black 4 min, +2 s. Black goes through on a draw.</span></span></label>
         <label class="row gap-3 span-2" style="cursor:pointer"><input type="checkbox" name="auto_knockout" ${t.auto_knockout ? "checked" : ""} style="width:1.1rem;height:1.1rem;flex-shrink:0;accent-color:#d9dce2"><span><span class="strong small" style="display:block">Build the bracket after the groups</span><span class="hint">When the last group game ends, the round of 16 is drawn from the final tables.</span></span></label>
         <div class="field"><label for="ap-delay">Armageddon starts after (minutes)</label><input class="input" id="ap-delay" name="delay" type="number" min="1" max="1440" value="${t.tiebreak_delay_minutes}"></div>
@@ -441,7 +449,7 @@ function tournamentTab() {
         <div class="row gap-3"><button class="btn btn-primary" type="submit">${icon("paper-plane-right", "bold")} Send</button><span data-msg class="small muted"></span></div>
       </form>`
     : "";
-  return `<div class="stack gap-8">${form}${t ? modeChooser({ full: false }) : ""}${autopilot}${list}</div>`;
+  return `<div class="stack gap-8">${form}${autopilot}${list}</div>`;
 }
 
 function newEditionModal() {
@@ -495,14 +503,13 @@ function peopleTab() {
 
   const table = visible.length
     ? `<div class="panel table-wrap"><table class="table" style="min-width:720px">
-        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th class="r">Rating</th><th style="width:9rem"></th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th style="width:9rem"></th></tr></thead>
         <tbody>${visible
           .map(
             (p) => `<tr>
               <td><span style="font-weight:500">${esc(p.full_name)}</span>${p.school ? `<span class="xs dim" style="display:block">${esc(p.school)}</span>` : ""}</td>
               <td class="muted">${esc(p.email)}</td>
               <td>${ROLE_LABEL[p.role]}</td>
-              <td class="r num">${p.role === "player" ? p.rating : "-"}</td>
               <td class="r">${p.role === "player" ? `<a class="icon-btn" href="home.html?player=${p.id}" aria-label="View ${esc(p.full_name)}'s dashboard" title="View their dashboard">${icon("eye")}</a>` : ""}${isAdmin
                 ? `<button class="icon-btn" data-action="edit-person" data-id="${p.id}" aria-label="Edit ${esc(p.full_name)}">${icon("pencil-simple")}</button>${p.id !== profile.id ? `<button class="icon-btn danger" data-action="delete-person" data-id="${p.id}" aria-label="Delete ${esc(p.full_name)}">${icon("trash")}</button>` : ""}`
                 : ""}</td>
@@ -531,19 +538,13 @@ function personModal(person) {
       <div class="field"><label for="pf-name">Full name</label><input class="input" id="pf-name" name="full_name" value="${esc(person?.full_name ?? "")}" required></div>
       <div class="field"><label for="pf-email">Email</label><input class="input" id="pf-email" name="email" type="email" value="${esc(person?.email ?? "")}" required><p class="hint">They sign in with this.</p></div>
       <div class="field"><label for="pf-pass">${person ? "New password" : "Password"}</label><input class="input" id="pf-pass" name="password" type="text" autocomplete="new-password" ${person ? "" : "required"} minlength="8"><p class="hint">${person ? "Leave empty to keep their current password." : "At least 8 characters. Share it with them privately."}</p></div>
-      <div class="two-col">
-        <div class="field"><label for="pf-role">Role</label><select class="input" id="pf-role" name="role">${ROLES.map((r) => `<option value="${r}" ${r === (person?.role ?? "player") ? "selected" : ""}>${ROLE_LABEL[r]}</option>`).join("")}</select></div>
-        <div class="field"><label for="pf-rating">Rating</label><input class="input" id="pf-rating" name="rating" type="number" min="0" max="3500" value="${person?.rating ?? 1000}"></div>
-      </div>
-      <div class="field"><label for="pf-school">School or club</label><input class="input" id="pf-school" name="school" value="${esc(person?.school ?? "")}"><p class="hint">Optional. Shown on the leaderboard.</p></div>
+      <div class="field"><label for="pf-role">Role</label><select class="input" id="pf-role" name="role">${ROLES.map((r) => `<option value="${r}" ${r === (person?.role ?? "player") ? "selected" : ""}>${ROLE_LABEL[r]}</option>`).join("")}</select></div>
+      <div class="field"><label for="pf-school">School or club</label><input class="input" id="pf-school" name="school" value="${esc(person?.school ?? "")}"><p class="hint">Optional. Shown next to their name in the group tables.</p></div>
       <div data-err></div>
       <div class="modal-actions"><button class="btn" type="button" data-close>Cancel</button><button class="btn btn-primary" type="submit">${person ? "Save changes" : "Create account"}</button></div>
     </form>`,
   );
   const form = d.querySelector("form");
-  const syncRating = () => (form.rating.disabled = form.role.value !== "player");
-  form.role.addEventListener("change", syncRating);
-  syncRating();
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     await withBusy(form.querySelector("[type=submit]"), async () => {
@@ -554,7 +555,6 @@ function personModal(person) {
         email: form.email.value,
         password: form.password.value || undefined,
         role: form.role.value,
-        rating: Number(form.rating.value),
         school: form.school.value,
       });
       d.close();
@@ -583,7 +583,7 @@ function deletePersonModal(person) {
 // ---------------------------------------------------------------- groups tab
 
 function playerPool() {
-  return store.profiles.filter((p) => p.role === "player").sort((a, b) => b.rating - a.rating);
+  return store.profiles.filter((p) => p.role === "player").sort((a, b) => a.full_name.localeCompare(b.full_name));
 }
 
 function groupsTab() {
@@ -599,10 +599,10 @@ function groupsTab() {
           const current = store.groupPlayers.find((gp) => gp.group_id === g.id && gp.seed === seed);
           const options = players
             .filter((p) => p.id === current?.player_id || !placed.has(p.id))
-            .map((p) => `<option value="${p.id}" ${p.id === current?.player_id ? "selected" : ""}>${esc(p.full_name)} (${p.rating})</option>`)
+            .map((p) => `<option value="${p.id}" ${p.id === current?.player_id ? "selected" : ""}>${esc(p.full_name)}</option>`)
             .join("");
-          return `<div class="slot"><span class="pot" title="Pot ${seed}">P${seed}</span>
-            <label class="sr-only" for="slot-${g.id}-${seed}">Group ${g.label}, pot ${seed}</label>
+          return `<div class="slot"><span class="pot" title="Place ${seed}">${seed}</span>
+            <label class="sr-only" for="slot-${g.id}-${seed}">Group ${g.label}, place ${seed}</label>
             <select class="input sm" id="slot-${g.id}-${seed}" data-slot data-group="${g.id}" data-seed="${seed}"><option value="">Empty</option>${options}</select></div>`;
         })
         .join("");
@@ -612,404 +612,86 @@ function groupsTab() {
 
   return `<div class="stack gap-6">
     <div class="split">
-      <p class="muted" style="max-width:60ch"><span class="num" style="color:var(--fg)">${store.groupPlayers.length}</span> of 32 players placed. Run a seeded draw, or pick players slot by slot.</p>
+      <p class="muted" style="max-width:60ch"><span class="num" style="color:var(--fg)">${store.groupPlayers.length}</span> of 32 players placed. Run a random draw, or pick players place by place.</p>
       <div class="row gap-2">
         <button class="btn btn-ghost" data-action="clear-groups" ${store.groupPlayers.length ? "" : "disabled"}>Clear all</button>
-        <button class="btn btn-primary" data-action="draw" ${players.length < 32 ? "disabled" : ""}>${icon("shuffle", "bold")} Seeded draw</button>
+        <button class="btn btn-primary" data-action="draw" ${players.length < 32 ? "disabled" : ""}>${icon("shuffle", "bold")} Random draw</button>
       </div>
     </div>
     ${players.length < 32 ? notice(`You have ${players.length} player accounts. Add at least 32 on the People tab to run the draw.`) : ""}
     ${hasFixtures ? notice("Group fixtures already exist. If you change the groups, generate the fixtures again on the Matches tab.") : ""}
     <div data-err></div>
-    ${store.groups.length && store.groupPlayers.length === store.groups.length * 4
-      ? modeChooser({ full: true })
-      : tournamentMode()
-        ? ""
-        : notice(`When all ${store.groups.length * 4 || 32} places are filled, you'll choose here whether this is a rated or an unrated tournament.`)}
     <div class="grid sm-2 xl-4 tight">${groups}</div>
     ${isAdmin ? testPanel() : ""}
   </div>`;
 }
 
-// ---------------------------------------------------------------- rated or unrated tournament
-
-// Shown on the Groups tab once every place is filled (full), and always on
-// the Tournament tab. Fixtures can't be generated until a choice is made.
-function modeChooser({ full }) {
-  const mode = tournamentMode();
-  const done = store.matches.filter((m) => !isFriendly(m) && !m.tiebreak_of && m.status === "completed").length;
-  const card = (value, title, body, glyph) => `<button type="button" class="mode-card${mode === value ? " on" : ""}" data-action="set-mode" data-rated="${value === "rated"}" aria-pressed="${mode === value}">
-      <span class="mode-icon">${icon(glyph, "bold")}</span>
-      <span class="mode-title">${title}</span>
-      <span class="mode-body">${body}</span>
-      ${mode === value ? `<span class="mode-tick">${icon("check-circle", "fill")} Chosen</span>` : ""}
-    </button>`;
-  const intro = mode
-    ? `This edition is ${mode === "rated" ? "a <strong>rated</strong>" : "an <strong>unrated</strong>"} tournament. You can switch while it runs: finished games gain or lose their rating change straight away.`
-    : "Choose before you generate the fixtures. Group games, the knockout bracket and its games all follow this choice. Friendly matches keep their own setting.";
-  return `<section class="panel pad mode-panel${full && !mode ? " attention" : ""}" id="mode">
-    <p class="eyebrow">${full ? `Groups A to ${String.fromCharCode(64 + store.groups.length)} are full` : "Tournament type"}</p>
-    <h2 class="section-title mt-2">How should this tournament count?</h2>
-    <p class="small muted mt-1" style="max-width:70ch">${intro}</p>
-    <div class="mode-grid mt-4">
-      ${card("rated", "Rated tournament", "Every group and knockout game changes both players' Elo ratings, and the leaderboard follows the results.", "chart-line-up")}
-      ${card("unrated", "Unrated tournament", "Groups, tables, the bracket, Armageddon tiebreaks and the champion work exactly the same, but nobody's rating changes. Good for practice or a fun event.", "minus-circle")}
-    </div>
-    ${done && mode ? `<p class="hint mt-3">${done} finished game${done === 1 ? "" : "s"} so far.</p>` : ""}
-    <div data-mode-err class="mt-3"></div>
-  </section>`;
-}
-
 // ---------------------------------------------------------------- registrations tab (admins)
 
-
-// Everyone who registered for the active edition, kept live.
-async function loadRegistrations() {
-  if (!store.tournament) {
-    ui.regs = [];
-    return;
-  }
-  const { data } = await supabase.from("registrations").select("*").eq("tournament_id", store.tournament.id).order("created_at", { ascending: false });
-  ui.regs = data ?? [];
-}
-
-async function startRegistrations() {
-  await loadRegistrations();
-  if (currentTab() === "registrations") scheduleDraw();
-  supabase
-    .channel("control-registrations")
-    .on("postgres_changes", { event: "*", schema: "public", table: "registrations" }, async () => {
-      await loadRegistrations();
-      if (currentTab() === "registrations") scheduleDraw();
-    })
-    .subscribe();
-}
-
-// The form being edited, kept apart from the saved one until "Save form".
-function formDraft() {
-  if (!ui.formDraft || ui.formDraftFor !== store.tournament?.id) {
-    ui.formDraft = structuredClone(store.tournament?.registration ?? { status: "soon", intro: "", fields: [] });
-    ui.formDraftFor = store.tournament?.id;
-    ui.formDirty = false;
-  }
-  return ui.formDraft;
-}
-
+// Players register in a Google Form. Its link is saved on the edition: the
+// main page's "Register now" buttons open it, and say "Registration coming
+// soon" while there is no link.
 function registrationsTab() {
-  if (!store.tournament) return emptyState("No edition yet", "Create the tournament first.");
-  return `<div class="stack gap-8">${formEditor()}${applicantsList()}</div>`;
-}
-
-function formEditor() {
-  const f = formDraft();
-  const saved = store.tournament.registration ?? {};
-  const liveState = saved.status === "open" && saved.closes_at && Date.now() > Date.parse(saved.closes_at) ? "closed" : saved.status;
-  const statusChips = Object.entries(REG_STATUS)
-    .map(([k, v]) => `<button type="button" class="chip${f.status === k ? " active" : ""}" data-action="reg-status" data-status="${k}">${v}</button>`)
-    .join("");
-  const rows = f.fields
-    .map((q, i) => {
-      const locked = q.core || q.builtin;
-      return `<div class="q-row" data-q="${i}">
-        <div class="q-move">
-          <button type="button" class="icon-btn" data-action="q-up" data-i="${i}" aria-label="Move up" ${i === 0 ? "disabled" : ""}>${icon("caret-up", "bold")}</button>
-          <button type="button" class="icon-btn" data-action="q-down" data-i="${i}" aria-label="Move down" ${i === f.fields.length - 1 ? "disabled" : ""}>${icon("caret-down", "bold")}</button>
+  if (!store.tournament) return emptyState("No edition yet", "Create the tournament first, then add its registration form here.");
+  const link = formLink(store.tournament.registration?.form_url);
+  return `<div class="stack gap-8">
+    <section class="panel pad stack gap-4">
+      <div class="split">
+        <div>
+          <h2 class="section-title">${icon("clipboard-text", "bold")} Registration form</h2>
+          <p class="small muted mt-1" style="max-width:66ch">Players register in a Google Form. Paste its link here and "Register now" on the main page opens it. While there is no link, the main page says "Registration coming soon".</p>
         </div>
-        <div class="q-main">
-          <label class="sr-only" for="q-label-${i}">Question</label>
-          <input class="input sm" id="q-label-${i}" data-q-label="${i}" value="${esc(q.label)}" maxlength="120">
-          ${q.type === "choice" ? `<input class="input sm mt-2" data-q-options="${i}" value="${esc((q.options ?? []).join(", "))}" placeholder="Options, separated by commas">` : ""}
-        </div>
-        <select class="input sm q-type" data-q-type="${i}" ${locked ? "disabled" : ""} aria-label="Answer type">${
-          locked
-            ? `<option>${q.core ? (q.key === "password" ? "Password" : q.key === "email" ? "Email" : "Short answer") : q.type === "tel" ? "Phone number" : "Short answer"}</option>`
-            : FIELD_TYPES.map(([v, l]) => `<option value="${v}" ${q.type === v ? "selected" : ""}>${l}</option>`).join("")
-        }</select>
-        <label class="q-req"><input type="checkbox" data-q-required="${i}" ${q.required ? "checked" : ""} ${q.core ? "disabled" : ""}> Required</label>
-        ${locked ? `<span class="q-lock" title="${q.core ? "Needed to create the sign-in" : "Saved to the player's profile"}">${icon("lock-simple")}</span>` : `<button type="button" class="icon-btn danger" data-action="q-remove" data-i="${i}" aria-label="Remove question">${icon("trash")}</button>`}
-      </div>`;
-    })
-    .join("");
-  return `<section class="panel pad" id="reg-form">
-    <div class="row between wrap gap-4">
-      <div>
-        <h2 class="section-title">${icon("clipboard-text", "bold")} Registration form</h2>
-        <p class="small muted mt-1" style="max-width:66ch">"Register now" on the main page opens this form. Applicants choose their own password, so when you add them you only pick a role.</p>
+        <span class="badge">Main page now: ${link ? "Register now" : "Registration coming soon"}</span>
       </div>
-      <div class="row gap-2"><span class="badge">Now: ${REG_STATUS[liveState] ?? "Coming soon"}</span><a class="btn btn-sm" href="register.html" target="_blank" rel="noopener">${icon("arrow-square-out")} Open the form</a></div>
-    </div>
-    <div class="form-grid md-2 mt-6">
-      <div class="field"><label>Registration</label><div class="chips" style="margin:0">${statusChips}</div><p class="hint">Coming soon and Closed show a message instead of the form.</p></div>
-      <div class="field"><label for="reg-closes">Closes (optional)</label><input class="input" id="reg-closes" type="datetime-local" value="${toLocalInput(f.closes_at)}"><p class="hint">After this time the form closes by itself.</p></div>
-      <div class="field span-2"><label for="reg-intro">Message at the top of the form</label><textarea class="input" id="reg-intro" rows="2" maxlength="600">${esc(f.intro ?? "")}</textarea></div>
-    </div>
-    <h3 class="eyebrow mt-8 mb-3">Questions</h3>
-    <div class="q-list">${rows}</div>
-    <div class="row between wrap gap-3 mt-4">
-      <button type="button" class="btn btn-sm" data-action="q-add">${icon("plus", "bold")} Add a question</button>
-      <div class="row gap-3"><span data-form-msg class="small muted">${ui.formDirty ? "Unsaved changes" : ""}</span>
-        <button type="button" class="btn btn-ghost btn-sm" data-action="reg-discard" ${ui.formDirty ? "" : "disabled"}>Discard</button>
-        <button type="button" class="btn btn-primary" data-action="reg-save">Save form</button></div>
-    </div>
-    <div data-form-err class="mt-3"></div>
-  </section>`;
-}
-
-function applicantsList() {
-  if (ui.regs === null) return `<div class="skeleton" style="height:14rem"></div>`;
-  const counts = { new: 0, accepted: 0, rejected: 0, all: ui.regs.length };
-  ui.regs.forEach((r) => (counts[r.status] += 1));
-  const q = ui.regQuery.toLowerCase();
-  const shown = ui.regs.filter(
-    (r) => (ui.regFilter === "all" || r.status === ui.regFilter) && (!q || `${r.full_name} ${r.email} ${r.school ?? ""} ${r.phone ?? ""}`.toLowerCase().includes(q)),
-  );
-  // Drop selections that are no longer pending.
-  for (const id of [...ui.regSelected]) if (!ui.regs.some((r) => r.id === id && r.status === "new")) ui.regSelected.delete(id);
-  const labels = Object.fromEntries((store.tournament.registration?.fields ?? []).map((f) => [f.key, f.label]));
-  const chips = [["new", "New"], ["accepted", "Added"], ["rejected", "Rejected"], ["all", "All"]]
-    .map(([k, v]) => `<button class="chip${ui.regFilter === k ? " active" : ""}" data-action="reg-filter" data-filter="${k}">${v}<span class="count">${counts[k]}</span></button>`)
-    .join("");
-  const when = (iso) => new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
-  const answer = (v) => (v === true ? "Yes" : v === false ? "No" : esc(v));
-  const rows = shown
-    .map((r) => {
-      const extra = Object.entries(r.answers ?? {}).filter(([, v]) => v !== "" && v !== null && v !== false);
-      return `<div class="reg-row${r.status !== "new" ? " done" : ""}">
-        <span class="reg-pick">${r.status === "new" ? `<input type="checkbox" data-reg-pick="${r.id}" ${ui.regSelected.has(r.id) ? "checked" : ""} aria-label="Select ${esc(r.full_name)}">` : ""}</span>
-        <div class="reg-who">
-          <span class="strong">${esc(r.full_name)}</span>
-          <span class="xs dim">${esc(r.school ?? "")}</span>
-          ${extra.length ? `<details class="reg-more"><summary class="xs">All answers</summary><dl>${extra.map(([k, v]) => `<dt>${esc(labels[k] ?? k)}</dt><dd>${answer(v)}</dd>`).join("")}</dl></details>` : ""}
+      <form class="stack gap-4" data-form="reg-link">
+        <div class="field">
+          <label for="reg-url">Google Form link</label>
+          <input class="input" id="reg-url" name="url" type="url" inputmode="url" autocomplete="off" placeholder="https://forms.gle/..." value="${esc(ui.regDraft ?? link ?? "")}">
+          <p class="hint">In Google Forms press Send, choose the link icon and copy the link. It starts with https://forms.gle/ or https://docs.google.com/forms/.</p>
         </div>
-        <div class="reg-contact small"><span>${esc(r.email)}</span><span class="dim">${esc(r.phone ?? "")}</span></div>
-        <span class="xs dim reg-when">${when(r.created_at)}</span>
-        <div class="reg-actions">${
-          r.status === "new"
-            ? `<button class="btn btn-primary btn-sm" data-action="reg-add" data-id="${r.id}">${icon("user-plus", "bold")} Add</button>
-               <button class="btn btn-ghost btn-sm" data-action="reg-reject" data-id="${r.id}">Reject</button>`
-            : r.status === "accepted"
-              ? `<span class="badge">Added as ${esc(ROLE_LABEL[r.role] ?? r.role)}</span>`
-              : `<span class="badge">Rejected</span>`
-        }<button class="icon-btn danger" data-action="reg-delete" data-id="${r.id}" aria-label="Delete this registration">${icon("trash")}</button></div>
-      </div>`;
-    })
-    .join("");
-  const n = ui.regSelected.size;
-  return `<section>
-    <div class="split mb-4">
-      <h2 class="section-title">Applicants <span class="dim num">${counts.all}</span></h2>
-      <div class="search">${icon("magnifying-glass")}<label for="reg-search" class="sr-only">Search applicants</label><input id="reg-search" class="input" placeholder="Search name, email, school, phone" value="${esc(ui.regQuery)}" data-input="reg-search"></div>
-    </div>
-    <div class="chips">${chips}</div>
-    ${n
-      ? `<div class="reg-bulk"><span><strong>${n}</strong> selected</span>
-          <label class="sr-only" for="bulk-role">Role</label>
-          <select class="input sm" id="bulk-role">${ROLES.map((r) => `<option value="${r}">${ROLE_LABEL[r]}</option>`).join("")}</select>
-          <button class="btn btn-primary btn-sm" data-action="reg-add-selected">${icon("user-plus", "bold")} Add ${n} to the portal</button>
-          <button class="btn btn-ghost btn-sm" data-action="reg-clear">Clear</button></div>`
-      : ""}
-    <div data-reg-err></div>
-    ${shown.length
-      ? `<div class="panel pad-sm">${counts.new && ui.regFilter === "new" ? `<label class="reg-all xs muted"><input type="checkbox" data-reg-all ${n && n === shown.length ? "checked" : ""}> Select all ${shown.length}</label>` : ""}${rows}</div>`
-      : emptyState(ui.regFilter === "new" ? "No new registrations" : "Nobody here", store.tournament.registration?.status === "open" ? "New entries appear here the moment they're sent." : "Open registration above to start taking entries.")}
-  </section>`;
+        <div data-err>${ui.regErr ? notice(esc(ui.regErr), "error") : ""}</div>
+        <div class="row gap-2 wrap">
+          <button class="btn btn-primary" type="submit">${icon("floppy-disk", "bold")} Save link</button>
+          ${link
+            ? `<a class="btn" href="${esc(link)}" target="_blank" rel="noopener">${icon("arrow-square-out")} Open the form</a>
+               <button class="btn btn-ghost" type="button" data-action="reg-remove">${icon("trash")} Remove link</button>`
+            : ""}
+          <span data-msg class="small muted">${esc(ui.regMsg)}</span>
+        </div>
+      </form>
+    </section>
+    <section class="panel pad">
+      <h2 class="section-title">${icon("list-numbers", "bold")} How registration works</h2>
+      <ol class="small muted mt-4 stack gap-2" style="padding-left:1.2rem;list-style:decimal;max-width:70ch">
+        <li>Make the form in Google Forms. Ask for what you need: full name, email, school and phone number.</li>
+        <li>Paste its link above and save. "Register now" on the main page starts opening the form straight away.</li>
+        <li>Answers arrive in Google Forms (and its spreadsheet), not here. When you have confirmed a player, create their account on the <a href="#people" style="text-decoration:underline">People</a> tab and send them their sign-in.</li>
+        <li>To close registration, remove the link, or stop accepting responses in Google Forms.</li>
+      </ol>
+    </section>
+  </div>`;
 }
 
-// Adding someone: only the role is asked (and a rating, for players).
-function addRegistrationModal(r) {
-  const rated = Number(r.answers?.rating);
-  const d = openModal(
-    `Add ${r.full_name}`,
-    `<form class="stack gap-4">
-      <p class="muted small">${esc(r.email)}${r.school ? ` · ${esc(r.school)}` : ""}. They sign in with the email and password they registered with.</p>
-      <div class="field"><label for="ar-role">Role</label><select class="input" id="ar-role" name="role">${ROLES.map((x) => `<option value="${x}">${ROLE_LABEL[x]}</option>`).join("")}</select></div>
-      <div class="field" data-rating><label for="ar-rating">Rating</label><input class="input" id="ar-rating" name="rating" type="number" min="0" max="3500" value="${Number.isInteger(rated) && rated > 0 ? rated : 1000}"><p class="hint">Used for the seeded draw. ${Number.isInteger(rated) && rated > 0 ? "From their registration." : "1000 if they don't have one."}</p></div>
-      <div data-err></div>
-      <div class="modal-actions"><button class="btn" type="button" data-close>Cancel</button><button class="btn btn-primary" type="submit">${icon("user-plus", "bold")} Add to the portal</button></div>
-    </form>`,
-  );
-  const form = d.querySelector("form");
-  const sync = () => (d.querySelector("[data-rating]").hidden = form.role.value !== "player");
-  form.role.addEventListener("change", sync);
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    await withBusy(form.querySelector("[type=submit]"), async () => {
-      await callFunction("admin-users", {
-        action: "accept_registration",
-        id: r.id,
-        role: form.role.value,
-        rating: form.role.value === "player" ? Number(form.rating.value) : undefined,
-      });
-      d.close();
-      await Promise.all([refresh(), loadRegistrations()]);
-      draw();
-    }, d.querySelector("[data-err]"));
-  });
+async function saveFormLink(value, button) {
+  const raw = String(value ?? "").trim();
+  const link = formLink(raw);
+  // Kept in the view state, so a live redraw doesn't wipe the message.
+  ui.regErr = raw && !link ? "That doesn't look like a Google Form link. It should start with https://forms.gle/ or https://docs.google.com/forms/." : "";
+  if (ui.regErr) return draw();
+  await withBusy(button, async () => {
+    await updateTournament(store.tournament.id, { registration: { form_url: link } });
+    ui.regMsg = link ? `Saved. "Register now" opens this form.` : `Link removed. The main page says "Registration coming soon".`;
+    ui.regDraft = null;
+    await refresh();
+    ui.regMsg = "";
+  }, app.querySelector("[data-err]"));
 }
 
 function registrationAction(el) {
-  const err = app.querySelector("[data-reg-err]") ?? app.querySelector("[data-form-err]");
-  const f = formDraft();
-  const reg = (id) => ui.regs.find((r) => r.id === id);
-  const i = Number(el.dataset.i);
-  const touched = () => {
-    ui.formDirty = true;
-    draw();
-  };
-  switch (el.dataset.action) {
-    case "reg-status":
-      f.status = el.dataset.status;
-      return touched();
-    case "q-up":
-      [f.fields[i - 1], f.fields[i]] = [f.fields[i], f.fields[i - 1]];
-      return touched();
-    case "q-down":
-      [f.fields[i + 1], f.fields[i]] = [f.fields[i], f.fields[i + 1]];
-      return touched();
-    case "q-remove":
-      f.fields.splice(i, 1);
-      return touched();
-    case "q-add":
-      f.fields.push({ key: `q_${crypto.randomUUID().slice(0, 8)}`, label: "New question", type: "text", required: false });
-      return touched();
-    case "reg-discard":
-      ui.formDraft = null;
-      return draw();
-    case "reg-save": {
-      const problems = [];
-      if (f.fields.some((q) => !q.label.trim())) problems.push("Every question needs a label.");
-      if (f.fields.some((q) => q.type === "choice" && !(q.options ?? []).length)) problems.push('"Choose one" questions need at least one option.');
-      const box = app.querySelector("[data-form-err]");
-      if (problems.length) {
-        box.innerHTML = notice(problems.join(" "), "error");
-        return;
-      }
-      return withBusy(el, async () => {
-        await updateTournament(store.tournament.id, { registration: f });
-        await loadAll();
-        ui.formDraft = null;
-        draw();
-        const msg = app.querySelector("[data-form-msg]");
-        if (msg) msg.textContent = "Saved.";
-      }, box);
-    }
-    case "reg-filter":
-      ui.regFilter = el.dataset.filter;
-      return draw();
-    case "reg-clear":
-      ui.regSelected.clear();
-      return draw();
-    case "reg-add":
-      return addRegistrationModal(reg(el.dataset.id));
-    case "reg-reject": {
-      const r = reg(el.dataset.id);
-      if (!confirm(`Reject ${r.full_name}? Their sign-in is removed, so they can't get into the portal (they can register again later).`)) return;
-      return withBusy(el, async () => {
-        await callFunction("admin-users", { action: "reject_registration", id: r.id });
-        await loadRegistrations();
-        draw();
-      }, err);
-    }
-    case "reg-delete": {
-      const r = reg(el.dataset.id);
-      const msg = r.status === "accepted"
-        ? `Delete ${r.full_name}'s registration? Their portal account stays; remove it on the People tab if needed.`
-        : `Delete ${r.full_name}'s registration and their sign-in?`;
-      if (!confirm(msg)) return;
-      return withBusy(el, async () => {
-        await callFunction("admin-users", { action: "delete_registration", id: r.id });
-        await loadRegistrations();
-        draw();
-      }, err);
-    }
-    case "reg-add-selected": {
-      const role = app.querySelector("#bulk-role").value;
-      const ids = [...ui.regSelected];
-      return withBusy(el, async () => {
-        let done = 0;
-        const failed = [];
-        for (const id of ids) {
-          try {
-            await callFunction("admin-users", { action: "accept_registration", id, role });
-            done += 1;
-            el.textContent = `Adding ${done} of ${ids.length}…`;
-          } catch (e) {
-            failed.push(`${reg(id)?.full_name}: ${e.message}`);
-          }
-        }
-        ui.regSelected.clear();
-        await Promise.all([refresh(), loadRegistrations()]);
-        draw();
-        const box = app.querySelector("[data-reg-err]");
-        if (box) box.innerHTML = notice(`Added ${done} ${done === 1 ? "person" : "people"} as ${ROLE_LABEL[role]}.${failed.length ? ` Not added: ${esc(failed.join("; "))}` : ""}`, failed.length ? "error" : "");
-      }, err);
-    }
-  }
+  if (el.dataset.action !== "reg-remove") return;
+  if (!confirm(`Remove the form link? The main page will say "Registration coming soon".`)) return;
+  return saveFormLink("", el);
 }
-
-// Typing in the form editor updates the draft without redrawing, so the
-// cursor stays put; other changes redraw.
-app.addEventListener("input", (e) => {
-  if (currentTab() !== "registrations") return;
-  const f = formDraft();
-  const t = e.target;
-  const mark = () => {
-    ui.formDirty = true;
-    const m = app.querySelector("[data-form-msg]");
-    if (m) m.textContent = "Unsaved changes";
-    const discard = app.querySelector('[data-action="reg-discard"]');
-    if (discard) discard.disabled = false;
-  };
-  if (t.dataset.qLabel !== undefined) {
-    f.fields[Number(t.dataset.qLabel)].label = t.value;
-    mark();
-  } else if (t.dataset.qOptions !== undefined) {
-    f.fields[Number(t.dataset.qOptions)].options = t.value.split(",").map((s) => s.trim()).filter(Boolean);
-    mark();
-  } else if (t.id === "reg-intro") {
-    f.intro = t.value;
-    mark();
-  } else if (t.id === "reg-closes") {
-    f.closes_at = fromLocalInput(t.value);
-    mark();
-  } else if (t.dataset.input === "reg-search") {
-    ui.regQuery = t.value;
-    const pos = t.selectionStart;
-    draw();
-    const again = app.querySelector("[data-input=reg-search]");
-    again.focus();
-    again.setSelectionRange(pos, pos);
-  }
-});
-
-app.addEventListener("change", (e) => {
-  if (currentTab() !== "registrations") return;
-  const f = formDraft();
-  const t = e.target;
-  if (t.dataset.qType !== undefined) {
-    const q = f.fields[Number(t.dataset.qType)];
-    q.type = t.value;
-    if (q.type === "choice" && !q.options) q.options = [];
-    ui.formDirty = true;
-    draw();
-  } else if (t.dataset.qRequired !== undefined) {
-    f.fields[Number(t.dataset.qRequired)].required = t.checked;
-    ui.formDirty = true;
-    draw();
-  } else if (t.dataset.regPick !== undefined) {
-    if (t.checked) ui.regSelected.add(t.dataset.regPick);
-    else ui.regSelected.delete(t.dataset.regPick);
-    draw();
-  } else if (t.dataset.regAll !== undefined) {
-    const q = ui.regQuery.toLowerCase();
-    ui.regs
-      .filter((r) => r.status === "new" && (!q || `${r.full_name} ${r.email} ${r.school ?? ""} ${r.phone ?? ""}`.toLowerCase().includes(q)))
-      .forEach((r) => (t.checked ? ui.regSelected.add(r.id) : ui.regSelected.delete(r.id)));
-    draw();
-  }
-});
-
-if (isAdmin) startRegistrations();
 
 // ---------------------------------------------------------------- testing with bots
 
@@ -1040,7 +722,7 @@ function testPanel() {
   return `<section class="panel pad test-panel" id="testing">
     <div class="row between wrap gap-4">
       <div><h2 class="section-title">${icon("robot", "bold")} Test with bots</h2>
-        <p class="small muted mt-1" style="max-width:70ch">Rehearse the whole tournament before the real one. Bots are marked <span class="bot-tag">Bot</span> everywhere. When you're done, one click removes every bot and every game they played, and real players' ratings go back to what they were.</p></div>
+        <p class="small muted mt-1" style="max-width:70ch">Rehearse the whole tournament before the real one. Bots are marked <span class="bot-tag">Bot</span> everywhere. When you're done, one click removes every bot and every game they played.</p></div>
       ${n ? `<span class="badge">${n} bots in</span>` : ""}
     </div>
     <div class="steps">
@@ -1061,11 +743,11 @@ function drawModal() {
   const placed = new Set(store.groupPlayers.map((gp) => gp.player_id));
   const preselected = new Set(placed.size === 32 ? placed : players.slice(0, 32).map((p) => p.id));
   const d = openModal(
-    "Seeded draw",
-    `<p class="muted">Players are ranked by rating into four pots of eight. Each group gets one player from each pot, so the strongest players start in different groups. This replaces the current groups.</p>
+    "Random draw",
+    `<p class="muted">The 32 players you tick are shuffled and dealt into the eight groups, four to a group. Every player has the same chance of landing anywhere. This replaces the current groups.</p>
      <p class="small mt-4"><span class="num strong" data-count></span><span class="muted"> of 32 players selected</span></p>
      <div class="pick-list">${players
-       .map((p) => `<label><input type="checkbox" value="${p.id}" ${preselected.has(p.id) ? "checked" : ""}><span class="grow truncate">${esc(p.full_name)}</span><span class="num xs dim">${p.rating}</span></label>`)
+       .map((p) => `<label><input type="checkbox" value="${p.id}" ${preselected.has(p.id) ? "checked" : ""}><span class="grow truncate">${esc(p.full_name)}</span>${p.school ? `<span class="xs dim truncate">${esc(p.school)}</span>` : ""}</label>`)
        .join("")}</div>
      <div data-err class="mt-4"></div>
      <div class="modal-actions"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" data-confirm>${icon("shuffle", "bold")} Run the draw</button></div>`,
@@ -1085,7 +767,7 @@ function drawModal() {
   btn.addEventListener("click", () =>
     withBusy(btn, async () => {
       const ids = boxes.filter((b) => b.checked).map((b) => b.value);
-      await seededDraw(store.tournament.id, store.groups, ids.map((id) => store.profileById.get(id)));
+      await randomDraw(store.tournament.id, store.groups, ids.map((id) => store.profileById.get(id)));
       d.close();
       await refresh();
     }, d.querySelector("[data-err]")),
@@ -1111,7 +793,7 @@ function matchesTab() {
       const g = store.groups.find((x) => x.id === m.group_id);
       return `<div class="admin-row">
         <div class="grow">
-          <span class="xs dim" style="display:block;margin-bottom:0.25rem">${isFriendly(m) ? matchContext(m) : m.stage === "group" ? `Group ${g?.label ?? ""}` : m.tiebreak_of ? `${STAGE_LABEL[m.stage]} Armageddon` : `${STAGE_LABEL[m.stage]} ${m.bracket_slot}`}${m.rated === false && !isFriendly(m) && !m.tiebreak_of ? " · Unrated" : ""}${m.scheduled_at ? `, ${formatDateTime(m.scheduled_at)}` : ""}</span>
+          <span class="xs dim" style="display:block;margin-bottom:0.25rem">${isFriendly(m) ? matchContext(m) : m.stage === "group" ? `Group ${g?.label ?? ""}` : knockoutLabel(m)}${m.scheduled_at ? `, ${formatDateTime(m.scheduled_at)}` : ""}</span>
           <span class="vs">${playerHtml(m.white_id)}<span class="xs dim">vs</span>${playerHtml(m.black_id)}</span>
         </div>
         ${statusHtml(m)}
@@ -1128,11 +810,9 @@ function matchesTab() {
           ? `${groupGames.length} games made: every player meets the other three in their group over three rounds.`
           : "Makes 48 games: each group plays a round robin over three rounds."}</p>
       </div>
-      <button class="btn ${groupGames.length ? "" : "btn-primary"}" data-action="generate-fixtures" ${store.groupPlayers.length !== 32 || !tournamentMode() ? "disabled" : ""}>${groupGames.length ? "Generate again" : "Generate fixtures"}</button>
+      <button class="btn ${groupGames.length ? "" : "btn-primary"}" data-action="generate-fixtures" ${store.groupPlayers.length !== 32 ? "disabled" : ""}>${groupGames.length ? "Generate again" : "Generate fixtures"}</button>
     </section>
     ${store.groupPlayers.length !== 32 && !groupGames.length ? notice("Place all 32 players in groups first.") : ""}
-    ${store.groupPlayers.length === 32 && !tournamentMode() ? notice(`Choose a <a href="#groups" style="text-decoration:underline">rated or unrated tournament</a> on the Groups tab before generating fixtures.`) : ""}
-    ${tournamentMode() ? `<p class="small muted">${icon(tournamentMode() === "rated" ? "chart-line-up" : "minus-circle")} This is ${tournamentMode() === "rated" ? "a <strong>rated</strong>" : "an <strong>unrated</strong>"} tournament. <a href="#groups" style="text-decoration:underline">Change</a></p>` : ""}
     <div data-err></div>
 
     <section>
@@ -1140,7 +820,7 @@ function matchesTab() {
       ${round.key === "friendly"
         ? `<div class="panel pad split">
             <div><h2 class="section-title">Friendly matches</h2>
-              <p class="small muted mt-1" style="max-width:62ch">Arrange a game between any two people, outside the groups and the bracket, with its own clock. Choose <strong>unrated</strong> for practice or exhibition games: they never change ratings or the leaderboard. Choose <strong>rated</strong> to count it like a tournament game.</p></div>
+              <p class="small muted mt-1" style="max-width:62ch">Arrange a game between any two people, outside the groups and the bracket, with its own clock. Friendlies never count towards the group tables or the bracket.</p></div>
             <button class="btn btn-primary" data-action="new-friendly">${icon("plus", "bold")} New match</button>
           </div>
           ${roundMatches.length ? `<div class="panel pad-sm mt-4">${rows}</div>` : ""}`
@@ -1159,6 +839,12 @@ function matchesTab() {
   </div>`;
 }
 
+// "Quarterfinal 3", "Final", "Semifinal Armageddon".
+function knockoutLabel(m) {
+  if (m.tiebreak_of) return `${STAGE_LABEL[m.stage]} Armageddon`;
+  return m.stage === "final" || m.stage === "third" ? STAGE_LABEL[m.stage] : `${STAGE_LABEL[m.stage]} ${m.bracket_slot}`;
+}
+
 function matchModal(m) {
   // Friendlies can be between anyone; tournament games are between players.
   const players = store.profiles
@@ -1170,7 +856,7 @@ function matchModal(m) {
   const nameOf = (id) => esc(store.profileById.get(id)?.full_name ?? "");
 
   const d = openModal(
-    isFriendly(m) ? "Friendly match" : m.stage === "group" ? `Group game, round ${m.round}` : m.tiebreak_of ? `${STAGE_LABEL[m.stage]} Armageddon` : `${STAGE_LABEL[m.stage]} ${m.bracket_slot}`,
+    isFriendly(m) ? "Friendly match" : m.stage === "group" ? `Group game, round ${m.round}` : knockoutLabel(m),
     `<form class="stack gap-4">
       <div class="field">
         <label for="mm-when">Start time</label>
@@ -1190,9 +876,13 @@ function matchModal(m) {
           <option value="0-1" ${m.result === "0-1" ? "selected" : ""}>Black wins (0 - 1)</option>
           <option value="1/2-1/2" ${m.result === "1/2-1/2" ? "selected" : ""}>Draw (½ - ½)</option>
         </select>
-        <p class="hint">Use this for games played over the board, or to correct a result. Ratings update automatically.</p>
+        <p class="hint">Use this for games played over the board, or to correct a result. Standings and the bracket update automatically.</p>
       </div>
-      ${ratedSwitch(m.tiebreak_of ? false : m.rated !== false, Boolean(m.tiebreak_of))}
+      <div class="field">
+        <label for="mm-arbiter">Arbiter</label>
+        <select class="input" id="mm-arbiter" name="arbiter"><option value="">No arbiter</option>${staffList().map((p) => `<option value="${p.id}" ${p.id === m.arbiter_id ? "selected" : ""}>${esc(p.full_name)}</option>`).join("")}</select>
+        <p class="hint">Who on the organising team watches this game.</p>
+      </div>
       <a class="btn btn-sm" href="play.html?id=${m.id}" style="align-self:flex-start">${icon("crown-simple", "bold")} Open in the Arena</a>
       ${knockout && !m.tiebreak_of
         ? `<div class="field" data-tiebreak>
@@ -1222,7 +912,7 @@ function matchModal(m) {
   });
 
   d.querySelector("[data-reset]").addEventListener("click", (e) => {
-    if (!confirm("Reset this game to the starting position? Moves, clocks and the result are cleared, and any rating change is undone.")) return;
+    if (!confirm("Reset this game to the starting position? Moves, clocks and the result are cleared.")) return;
     withBusy(e.currentTarget, async () => {
       await resetGame(m.id);
       d.close();
@@ -1231,7 +921,7 @@ function matchModal(m) {
   });
 
   d.querySelector("[data-delete]")?.addEventListener("click", (e) => {
-    if (!confirm("Delete this friendly match? Any rating change it caused is undone.")) return;
+    if (!confirm("Delete this friendly match?")) return;
     withBusy(e.currentTarget, async () => {
       await deleteMatch(m.id);
       d.close();
@@ -1259,8 +949,7 @@ function matchModal(m) {
       patch.end_reason = result ? "result recorded by staff" : null;
     }
     if (knockout && result === "1/2-1/2" && form.winner?.value) patch.winner_id = form.winner.value;
-    // Rated or not; the database adds or undoes the rating change to match.
-    if (!m.tiebreak_of && form.rated.checked !== (m.rated !== false)) patch.rated = form.rated.checked;
+    if ((form.arbiter.value || null) !== (m.arbiter_id ?? null)) patch.arbiter_id = form.arbiter.value || null;
     await withBusy(form.querySelector("[type=submit]"), async () => {
       if (Object.keys(patch).length) await updateMatch(m.id, patch);
       d.close();
@@ -1269,20 +958,10 @@ function matchModal(m) {
   });
 }
 
-// The rated / unrated choice, the same in both dialogs.
-function ratedSwitch(checked, locked = false) {
-  return `<label class="row gap-3" style="cursor:${locked ? "default" : "pointer"};align-items:flex-start">
-    <input type="checkbox" name="rated" ${checked ? "checked" : ""} ${locked ? "disabled" : ""} style="width:1.1rem;height:1.1rem;flex-shrink:0;accent-color:#d9dce2;margin-top:0.2rem">
-    <span><span class="strong small" style="display:block">Rated game</span><span class="hint">${locked
-      ? "Armageddon tiebreaks are always unrated."
-      : "Rated games change both players' Elo ratings and count on the leaderboard. Unrated games don't."}</span></span>
-  </label>`;
-}
-
 function friendlyModal() {
   const people = store.profiles.slice().sort((a, b) => a.full_name.localeCompare(b.full_name));
   const options = people
-    .map((p) => `<option value="${p.id}">${esc(p.full_name)}${p.role === "player" ? ` (${p.rating})` : ` · ${ROLE_LABEL[p.role]}`}</option>`)
+    .map((p) => `<option value="${p.id}">${esc(p.full_name)}${p.role === "player" ? "" : ` · ${ROLE_LABEL[p.role]}`}</option>`)
     .join("");
   const soon = new Date(Date.now() + 10 * 60_000);
   soon.setSeconds(0, 0);
@@ -1300,7 +979,6 @@ function friendlyModal() {
         <div class="field"><label for="fm-min">Minutes each</label><input class="input" id="fm-min" name="minutes" type="number" min="1" max="180" value="${t?.time_control_minutes ?? 10}"></div>
         <div class="field"><label for="fm-inc">Increment (s)</label><input class="input" id="fm-inc" name="increment" type="number" min="0" max="60" value="${t?.increment_seconds ?? 5}"></div>
       </div>
-      ${ratedSwitch(false)}
       <div data-err></div>
       <div class="modal-actions"><button class="btn" type="button" data-close>Cancel</button><button class="btn btn-primary" type="submit">Create match</button></div>
     </form>`,
@@ -1324,7 +1002,6 @@ function friendlyModal() {
         when: fromLocalInput(form.when.value),
         minutes: Number(form.minutes.value),
         increment: Number(form.increment.value),
-        rated: form.rated.checked,
       });
       d.close();
       ui.round = "friendly";
@@ -1356,7 +1033,7 @@ function knockoutTab() {
       <div>
         <h2 class="section-title">Knockout bracket</h2>
         <p class="small muted mt-1" style="max-width:60ch">${existing.length
-          ? "The bracket is set. Winners move into the next round on their own as games finish; drawn games get an Armageddon tiebreak."
+          ? "The bracket is set. Winners move into the next round on their own as games finish; drawn games get an Armageddon tiebreak. The semifinal losers meet in the third-place match."
           : `Group stage: ${finished} of ${groupGames.length || 48} games finished. The top two in each group go through. ${TIEBREAK_NOTE}${store.tournament.auto_knockout ? " The bracket builds itself when the last group game ends." : ""}`}</p>
       </div>
       <div class="row gap-2">
@@ -1373,12 +1050,496 @@ function knockoutTab() {
   </div>`;
 }
 
+// ---------------------------------------------------------------- organising team tab
+
+// Where admins and moderators run the event together: who is on duty, a
+// shared task board, the team chat, and who arbitrates which game.
+
+function staffList() {
+  return store.profiles
+    .filter((p) => (p.role === "admin" || p.role === "moderator") && !p.is_bot)
+    .sort((a, b) => a.full_name.localeCompare(b.full_name));
+}
+
+function initials(name) {
+  return (name ?? "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("") || "?";
+}
+
+function teamName(id) {
+  return esc(store.profileById.get(id)?.full_name ?? "Someone");
+}
+
+// Games still to be played that have both players.
+function arbiterGames() {
+  return store.matches.filter((m) => m.status !== "completed" && m.white_id && m.black_id).sort(sortByTime);
+}
+
+function taskOverdue(t) {
+  return t.status !== "done" && t.due_at && new Date(t.due_at).getTime() < Date.now();
+}
+
+async function loadTeam() {
+  const team = watch.team;
+  const [tasks, messages] = await Promise.all([
+    supabase.from("team_tasks").select("*").order("created_at"),
+    supabase.from("team_messages").select("*").order("created_at", { ascending: false }).limit(200),
+  ]);
+  team.error = tasks.error?.message ?? messages.error?.message ?? "";
+  team.tasks = tasks.data ?? [];
+  team.messages = (messages.data ?? []).reverse();
+  try {
+    team.seenAt = Number(localStorage.getItem("amaze-team-seen")) || 0;
+  } catch {
+    team.seenAt = 0;
+  }
+  team.loaded = true;
+}
+
+// Tasks and chat arrive live; presence says who has the Control Room open.
+function watchTeam() {
+  const team = watch.team;
+  const apply = (list) => (p) => {
+    teamApply(list(), p.eventType === "DELETE" ? p.old : p.new, p.eventType === "DELETE");
+    teamPatch();
+  };
+  supabase
+    .channel("team-room")
+    .on("postgres_changes", { event: "*", schema: "public", table: "team_tasks" }, apply(() => team.tasks))
+    .on("postgres_changes", { event: "*", schema: "public", table: "team_messages" }, apply(() => team.messages))
+    .subscribe();
+
+  const room = supabase.channel("team-presence", { config: { presence: { key: profile.id } } });
+  const announce = () => room.track({ user_id: profile.id, tab: currentTab() });
+  room.on("presence", { event: "sync" }, () => {
+    const online = new Map();
+    for (const metas of Object.values(room.presenceState())) {
+      for (const meta of metas) if (meta.user_id) online.set(meta.user_id, meta.tab);
+    }
+    team.online = online;
+    if (currentTab() === "team") teamPatch();
+  });
+  room.subscribe((status) => {
+    if (status === "SUBSCRIBED") announce();
+  });
+  window.addEventListener("hashchange", announce);
+}
+
+function teamApply(list, row, removed = false) {
+  const i = list.findIndex((x) => x.id === row.id);
+  if (removed) {
+    if (i >= 0) list.splice(i, 1);
+  } else if (i >= 0) list[i] = row;
+  else list.push(row);
+}
+
+async function teamRun(query) {
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// Team chat messages from others since this person last had the tab open.
+function teamUnread() {
+  const team = watch.team;
+  return team.messages.filter((m) => m.author_id !== profile.id && new Date(m.created_at).getTime() > team.seenAt).length;
+}
+
+// After the tab is drawn: newest chat message in view, and nothing unread.
+function teamShown() {
+  const list = app.querySelector("[data-team=chat]");
+  if (list) list.scrollTop = list.scrollHeight;
+  watch.team.seenAt = Date.now();
+  try {
+    localStorage.setItem("amaze-team-seen", String(watch.team.seenAt));
+  } catch {
+    // Private windows may refuse storage; the count then resets per visit.
+  }
+}
+
+// Redraws the parts of the tab that changed, leaving alone whatever the
+// person is typing in or choosing from.
+function teamPatch() {
+  if (currentTab() !== "team") return scheduleDraw();
+  if (!watch.team.loaded) return;
+  const parts = { brief: teamBrief, roster: teamRoster, board: teamBoard, pinned: teamPinned, chat: teamChat, arbiters: teamArbiters };
+  for (const [key, html] of Object.entries(parts)) {
+    const el = app.querySelector(`[data-team="${key}"]`);
+    if (!el) return calmDraw();
+    if (el.contains(document.activeElement) && /SELECT|INPUT|TEXTAREA/.test(document.activeElement.tagName)) continue;
+    el.innerHTML = html();
+  }
+  teamShown();
+}
+
+function teamTab() {
+  const team = watch.team;
+  if (!team.loaded) return `<p class="muted">Opening the team room...</p>`;
+  const chip = (group, value, label, count) =>
+    `<button class="chip${ui[group] === value ? " active" : ""}" data-action="team-filter" data-group="${group}" data-value="${value}">${label}${count == null ? "" : `<span class="count">${count}</span>`}</button>`;
+  const games = arbiterGames();
+  return `<div class="stack gap-8">
+    ${team.error ? notice(esc(team.error), "error") : ""}
+    <div data-err></div>
+    <div class="grid sm-2 xl-4 tight" data-team="brief">${teamBrief()}</div>
+
+    <section>
+      <div class="split mb-4">
+        <div><h2 class="section-title">${icon("users-three", "bold")} On duty</h2><p class="small muted mt-1">Admins and moderators. A green dot means they have the Control Room open right now.</p></div>
+      </div>
+      <div class="tm-roster" data-team="roster">${teamRoster()}</div>
+    </section>
+
+    <section>
+      <div class="split mb-4">
+        <div><h2 class="section-title">${icon("kanban", "bold")} Task board</h2><p class="small muted mt-1">What has to happen, who has it and by when. Everyone on the team sees changes straight away.</p></div>
+        <button class="btn btn-primary" data-action="team-task-new">${icon("plus", "bold")} New task</button>
+      </div>
+      <div class="chips mb-4">${chip("taskFilter", "all", "Everyone's", team.tasks.length)}${chip("taskFilter", "mine", "Mine", team.tasks.filter((t) => t.assignee_id === profile.id).length)}</div>
+      <div data-team="board">${teamBoard()}</div>
+    </section>
+
+    <div class="tm-split">
+      <section class="panel tm-chat">
+        <div class="tm-chat-head"><h2 class="section-title">${icon("chats-circle", "bold")} Team chat</h2><p class="xs dim mt-1">Only admins and moderators can read this.</p></div>
+        <div data-team="pinned">${teamPinned()}</div>
+        <div class="tm-chat-list" data-team="chat" aria-live="polite">${teamChat()}</div>
+        <form class="tm-chat-form" data-form="team-chat">
+          <label class="sr-only" for="tm-say">Message the team</label>
+          <input class="input" id="tm-say" name="body" data-input="team-chat" maxlength="600" autocomplete="off" placeholder="Message the team" value="${esc(ui.chatDraft)}">
+          <button class="btn btn-primary" type="submit" aria-label="Send">${icon("paper-plane-right", "bold")}</button>
+        </form>
+      </section>
+
+      <section>
+        <div class="split mb-4">
+          <div><h2 class="section-title">${icon("gavel", "bold")} Arbiters</h2><p class="small muted mt-1">Put a name on every game, so each board has someone watching it.</p></div>
+          <button class="btn" data-action="team-arb-share" ${games.some((m) => !m.arbiter_id) ? "" : "disabled"}>${icon("shuffle", "bold")} Share out evenly</button>
+        </div>
+        <div class="chips mb-4">${chip("arbFilter", "open", "No arbiter", games.filter((m) => !m.arbiter_id).length)}${chip("arbFilter", "mine", "Mine", games.filter((m) => m.arbiter_id === profile.id).length)}${chip("arbFilter", "all", "All games", games.length)}</div>
+        <div class="panel pad-sm tm-arb-list" data-team="arbiters">${teamArbiters()}</div>
+      </section>
+    </div>
+  </div>`;
+}
+
+function teamBrief() {
+  const team = watch.team;
+  const open = team.tasks.filter((t) => t.status !== "done");
+  const overdue = open.filter(taskOverdue).length;
+  const games = arbiterGames();
+  const bare = games.filter((m) => !m.arbiter_id).length;
+  const staff = staffList();
+  const online = staff.filter((p) => team.online.has(p.id)).length;
+  const tile = (v, k, sub, warn = false) => `<div class="panel stat-tile"><span class="v${warn ? " signal" : ""}">${v}</span><span class="k">${k}</span><span class="sub">${sub}</span></div>`;
+  return (
+    tile(online, "Online now", `of ${staff.length} on the team`) +
+    tile(open.length, "Open tasks", `${open.filter((t) => t.assignee_id === profile.id).length} assigned to you`) +
+    tile(overdue, "Overdue", overdue ? "Past their due time" : "Nothing is late", overdue > 0) +
+    tile(bare, "Games without an arbiter", `of ${games.length} still to be played`, bare > 0 && games.length > 0)
+  );
+}
+
+function teamRoster() {
+  const team = watch.team;
+  const games = arbiterGames();
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  return staffList()
+    .map((p) => {
+      const tab = team.online.get(p.id);
+      const where = TABS.find((t) => t.id === tab)?.label;
+      const open = team.tasks.filter((t) => t.assignee_id === p.id && t.status !== "done").length;
+      const arb = games.filter((m) => m.arbiter_id === p.id).length;
+      return `<article class="panel tm-member${tab ? " on" : ""}">
+        <span class="tm-avatar">${esc(initials(p.full_name))}<i class="tm-dot" title="${tab ? "Online" : "Offline"}"></i></span>
+        <div class="grow" style="min-width:0">
+          <p class="strong truncate">${esc(p.full_name)}${p.id === profile.id ? ` <span class="xs dim">you</span>` : ""}</p>
+          <p class="xs dim truncate">${ROLE_LABEL[p.role]} · ${tab ? `In the Control Room${where ? `, ${where}` : ""}` : "Offline"}</p>
+          <p class="tm-pills"><span>${plural(open, "open task")}</span><span>${plural(arb, "game")} to arbitrate</span></p>
+        </div>
+      </article>`;
+    })
+    .join("");
+}
+
+function teamBoard() {
+  const team = watch.team;
+  if (!team.tasks.length) {
+    return emptyState(
+      "No tasks yet",
+      "Add your own, or start from the standard checklist for running the tournament.",
+      `<button class="btn" data-action="team-checklist">${icon("list-checks", "bold")} Add the standard checklist</button>`,
+    );
+  }
+  const columns = [
+    ["todo", "To do"],
+    ["doing", "In progress"],
+    ["done", "Done"],
+  ];
+  const shown = team.tasks.filter((t) => ui.taskFilter !== "mine" || t.assignee_id === profile.id);
+  const byDue = (a, b) => (a.due_at ? new Date(a.due_at).getTime() : Infinity) - (b.due_at ? new Date(b.due_at).getTime() : Infinity) || new Date(a.created_at) - new Date(b.created_at);
+  const card = (t, ci) => {
+    const late = taskOverdue(t);
+    const move = (to, glyph, label) => `<button class="icon-btn" data-action="team-task-move" data-id="${t.id}" data-to="${to}" aria-label="${label}" title="${label}">${icon(glyph, "bold")}</button>`;
+    return `<article class="tm-task${late ? " late" : ""}${t.status === "done" ? " done" : ""}">
+      <p class="small strong">${esc(t.title)}</p>
+      ${t.notes ? `<p class="xs muted tm-notes">${esc(t.notes)}</p>` : ""}
+      <p class="tm-pills">
+        <span>${icon("user")} ${t.assignee_id ? teamName(t.assignee_id) : "Anyone"}</span>
+        ${t.due_at ? `<span class="${late ? "late" : ""}">${icon("clock")} ${late ? "Was due" : "Due"} ${formatDateTime(t.due_at)}</span>` : ""}
+      </p>
+      <div class="tm-task-tools">
+        ${ci > 0 ? move(columns[ci - 1][0], "arrow-left", `Move back to ${columns[ci - 1][1]}`) : ""}
+        ${ci < 2 ? move(columns[ci + 1][0], ci === 1 ? "check" : "arrow-right", ci === 1 ? "Mark as done" : "Start this task") : ""}
+        ${t.status !== "done" && t.assignee_id !== profile.id ? `<button class="btn btn-sm btn-ghost" data-action="team-task-take" data-id="${t.id}">I'll take it</button>` : ""}
+        <span class="grow"></span>
+        <button class="icon-btn" data-action="team-task-edit" data-id="${t.id}" aria-label="Edit task">${icon("pencil-simple")}</button>
+        <button class="icon-btn danger" data-action="team-task-del" data-id="${t.id}" aria-label="Delete task">${icon("trash")}</button>
+      </div>
+    </article>`;
+  };
+  return `<div class="tm-board">${columns
+    .map(([key, label], ci) => {
+      const tasks = shown.filter((t) => t.status === key).sort(byDue);
+      return `<section class="tm-col" data-col="${key}">
+        <h3><span>${label}</span><span class="num xs dim">${tasks.length}</span></h3>
+        ${tasks.length ? tasks.map((t) => card(t, ci)).join("") : `<p class="xs dim tm-none">Nothing here.</p>`}
+      </section>`;
+    })
+    .join("")}</div>`;
+}
+
+function teamPinned() {
+  const pinned = watch.team.messages.filter((m) => m.pinned);
+  if (!pinned.length) return "";
+  return `<div class="tm-pinned">${pinned
+    .map((m) => `<p class="small">${icon("push-pin", "fill")}<span class="grow">${esc(m.body)} <span class="xs dim">${teamName(m.author_id)}</span></span><button class="icon-btn" data-action="team-pin" data-id="${m.id}" aria-label="Unpin" title="Unpin">${icon("x")}</button></p>`)
+    .join("")}</div>`;
+}
+
+function teamChat() {
+  const messages = watch.team.messages;
+  if (!messages.length) return `<p class="small dim tm-none">No messages yet. Say hello, or leave a note for whoever is on duty next.</p>`;
+  return messages
+    .map((m) => {
+      const mine = m.author_id === profile.id;
+      return `<div class="tm-msg${mine ? " mine" : ""}">
+        <span class="tm-avatar sm">${esc(initials(store.profileById.get(m.author_id)?.full_name))}</span>
+        <div class="grow" style="min-width:0">
+          <p class="xs dim"><span class="who">${mine ? "You" : teamName(m.author_id)}</span> · ${formatDateTime(m.created_at)}</p>
+          <p class="small tm-body">${esc(m.body)}</p>
+        </div>
+        <span class="tm-msg-tools">
+          <button class="icon-btn" data-action="team-pin" data-id="${m.id}" aria-label="${m.pinned ? "Unpin" : "Pin"} this message" title="${m.pinned ? "Unpin" : "Pin for the team"}">${icon("push-pin", m.pinned ? "fill" : "regular")}</button>
+          ${mine || isAdmin ? `<button class="icon-btn danger" data-action="team-msg-del" data-id="${m.id}" aria-label="Delete this message">${icon("trash")}</button>` : ""}
+        </span>
+      </div>`;
+    })
+    .join("");
+}
+
+function teamArbiters() {
+  const staff = staffList();
+  const all = arbiterGames();
+  if (!all.length) return `<p class="small dim tm-none">No games are waiting to be played. They appear here once the fixtures are made.</p>`;
+  const games = all.filter((m) => (ui.arbFilter === "open" ? !m.arbiter_id : ui.arbFilter === "mine" ? m.arbiter_id === profile.id : true));
+  if (!games.length) return `<p class="small dim tm-none">${ui.arbFilter === "open" ? "Every game has an arbiter." : "No games are assigned to you."}</p>`;
+  const more = games.length - 40;
+  return (
+    games
+      .slice(0, 40)
+      .map(
+        (m) => `<div class="admin-row tm-arb">
+          <div class="grow" style="min-width:0">
+            <span class="xs dim" style="display:block;margin-bottom:0.25rem">${esc(matchContext(m))}, ${m.scheduled_at ? formatDateTime(m.scheduled_at) : "not scheduled"}</span>
+            <span class="vs">${playerHtml(m.white_id)}<span class="xs dim">vs</span>${playerHtml(m.black_id)}</span>
+          </div>
+          <label class="sr-only" for="arb-${m.id}">Arbiter</label>
+          <select class="input sm" id="arb-${m.id}" data-arbiter="${m.id}"><option value="">No arbiter</option>${staff.map((p) => `<option value="${p.id}" ${p.id === m.arbiter_id ? "selected" : ""}>${esc(p.full_name)}</option>`).join("")}</select>
+        </div>`,
+      )
+      .join("") + (more > 0 ? `<p class="xs dim tm-none">And ${more} more. Assign these first, or share them out evenly.</p>` : "")
+  );
+}
+
+// The usual jobs for one edition, in order.
+function standardChecklist() {
+  return [
+    ["Open registration and share the link", "Registrations tab: paste the Google Form link."],
+    ["Review registrations and add the 32 players", "Check the Google Form answers, then create the accounts on the People tab."],
+    ["Run the group draw", "Groups tab: a random draw deals the players into groups A to H."],
+    ["Generate the group fixtures and schedule the rounds", "Matches tab. 48 games over three rounds."],
+    ["Put an arbiter on every game", "Use Share out evenly below, then swap where needed."],
+    ["Rehearse with test bots, then remove the test data", "Groups tab, Test with bots."],
+    ["Message the players with the start time and the rules", "Tournament tab, Message everyone."],
+    ["Run the knockout", "Round of 16 to the final, Armageddon tiebreaks and the third-place match: 64 games in all."],
+    ["Announce the champion and close the edition", "Set the edition to Complete."],
+  ];
+}
+
+function taskModal(task) {
+  const staff = staffList();
+  const d = openModal(
+    task ? "Edit task" : "New task",
+    `<form class="stack gap-4">
+      <div class="field"><label for="tk-title">Task</label><input class="input" id="tk-title" name="title" maxlength="120" required value="${esc(task?.title ?? "")}" placeholder="Schedule group round 2"></div>
+      <div class="field"><label for="tk-notes">Notes</label><textarea class="input" id="tk-notes" name="notes" rows="3" maxlength="600" placeholder="Optional details">${esc(task?.notes ?? "")}</textarea></div>
+      <div class="two-col">
+        <div class="field"><label for="tk-who">Assigned to</label><select class="input" id="tk-who" name="who"><option value="">Anyone</option>${staff.map((p) => `<option value="${p.id}" ${p.id === task?.assignee_id ? "selected" : ""}>${esc(p.full_name)}</option>`).join("")}</select></div>
+        <div class="field"><label for="tk-due">Due</label><input class="input" id="tk-due" name="due" type="datetime-local" value="${task?.due_at ? toLocalInput(task.due_at) : ""}"></div>
+      </div>
+      <div class="field"><label for="tk-status">Status</label><select class="input" id="tk-status" name="status">${[["todo", "To do"], ["doing", "In progress"], ["done", "Done"]].map(([v, l]) => `<option value="${v}" ${v === (task?.status ?? "todo") ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+      <div data-err></div>
+      <div class="modal-actions"><button class="btn" type="button" data-close>Cancel</button><button class="btn btn-primary" type="submit">${task ? "Save task" : "Add task"}</button></div>
+    </form>`,
+  );
+  const form = d.querySelector("form");
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await withBusy(form.querySelector("[type=submit]"), async () => {
+      const row = {
+        title: form.title.value.trim(),
+        notes: form.notes.value.trim() || null,
+        assignee_id: form.who.value || null,
+        due_at: form.due.value ? fromLocalInput(form.due.value) : null,
+        status: form.status.value,
+      };
+      const saved = task
+        ? await teamRun(supabase.from("team_tasks").update({ ...row, updated_at: new Date().toISOString() }).eq("id", task.id).select("*").single())
+        : await teamRun(supabase.from("team_tasks").insert({ ...row, created_by: profile.id }).select("*").single());
+      teamApply(watch.team.tasks, saved);
+      if (saved.assignee_id && saved.assignee_id !== profile.id && saved.assignee_id !== task?.assignee_id) {
+        await sendMessage([saved.assignee_id], "A task for you", saved.title, "admin.html#team");
+      }
+      d.close();
+      draw();
+    }, d.querySelector("[data-err]"));
+  });
+}
+
+async function patchTask(id, patch) {
+  const saved = await teamRun(supabase.from("team_tasks").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id).select("*").single());
+  teamApply(watch.team.tasks, saved);
+}
+
+// Puts one person on one game, and tells them.
+async function setArbiter(matchId, userId) {
+  const saved = await updateMatch(matchId, { arbiter_id: userId || null });
+  const i = store.matches.findIndex((m) => m.id === matchId);
+  if (i >= 0) store.matches[i] = saved;
+  if (userId && userId !== profile.id) {
+    const names = [saved.white_id, saved.black_id].map((id) => store.profileById.get(id)?.full_name ?? "?").join(" vs ");
+    await sendMessage([userId], "You're the arbiter", `${matchContext(saved)}: ${names}.`, `play.html?id=${matchId}`);
+  }
+}
+
+// Gives every game without an arbiter to the team member with the fewest.
+async function shareArbiters() {
+  const staff = staffList();
+  const games = arbiterGames();
+  const load = new Map(staff.map((p) => [p.id, games.filter((m) => m.arbiter_id === p.id).length]));
+  const given = new Map(staff.map((p) => [p.id, []]));
+  for (const m of games.filter((x) => !x.arbiter_id)) {
+    const next = staff.slice().sort((a, b) => load.get(a.id) - load.get(b.id))[0];
+    load.set(next.id, load.get(next.id) + 1);
+    given.get(next.id).push(m.id);
+  }
+  for (const [id, ids] of given) {
+    if (!ids.length) continue;
+    await teamRun(supabase.from("matches").update({ arbiter_id: id }).in("id", ids));
+    if (id !== profile.id) await sendMessage([id], "You're the arbiter", `You have ${ids.length} more game${ids.length === 1 ? "" : "s"} to arbitrate.`, "admin.html#team");
+  }
+}
+
+async function teamAction(el) {
+  const team = watch.team;
+  const err = app.querySelector("[data-err]");
+  const id = el.dataset.id;
+  const task = team.tasks.find((t) => t.id === id);
+  switch (el.dataset.action) {
+    case "team-filter":
+      ui[el.dataset.group] = el.dataset.value;
+      return draw();
+    case "team-task-new":
+      return taskModal(null);
+    case "team-task-edit":
+      return task && taskModal(task);
+    case "team-task-move":
+      return withBusy(el, async () => {
+        await patchTask(id, { status: el.dataset.to });
+        draw();
+      }, err);
+    case "team-task-take":
+      return withBusy(el, async () => {
+        await patchTask(id, { assignee_id: profile.id, status: task?.status === "todo" ? "doing" : task?.status });
+        draw();
+      }, err);
+    case "team-task-del":
+      if (!task || !confirm(`Delete the task "${task.title}"?`)) return;
+      return withBusy(el, async () => {
+        await teamRun(supabase.from("team_tasks").delete().eq("id", id));
+        teamApply(team.tasks, { id }, true);
+        draw();
+      }, err);
+    case "team-checklist":
+      return withBusy(el, async () => {
+        const rows = standardChecklist().map(([title, notes]) => ({ title, notes, created_by: profile.id }));
+        const saved = await teamRun(supabase.from("team_tasks").insert(rows).select("*"));
+        saved.forEach((row) => teamApply(team.tasks, row));
+        draw();
+      }, err);
+    case "team-pin": {
+      const msg = team.messages.find((m) => m.id === id);
+      if (!msg) return;
+      return withBusy(el, async () => {
+        const saved = await teamRun(supabase.from("team_messages").update({ pinned: !msg.pinned }).eq("id", id).select("*").single());
+        teamApply(team.messages, saved);
+        teamPatch();
+      }, err);
+    }
+    case "team-msg-del":
+      if (!confirm("Delete this message for everyone on the team?")) return;
+      return withBusy(el, async () => {
+        await teamRun(supabase.from("team_messages").delete().eq("id", id));
+        teamApply(team.messages, { id }, true);
+        teamPatch();
+      }, err);
+    case "team-arb-take":
+      return withBusy(el, async () => {
+        await setArbiter(id, profile.id);
+        draw();
+      }, err);
+    case "team-arb-share": {
+      const bare = arbiterGames().filter((m) => !m.arbiter_id).length;
+      const staff = staffList().length;
+      if (!confirm(`Share ${bare} game${bare === 1 ? "" : "s"} between the ${staff} ${staff === 1 ? "person" : "people"} on the team? Games that already have an arbiter are left alone.`)) return;
+      return withBusy(el, async () => {
+        await shareArbiters();
+        await refresh();
+      }, err);
+    }
+  }
+}
+
+async function sendTeamMessage(form) {
+  const body = form.body.value.trim();
+  if (!body) return;
+  await withBusy(form.querySelector("[type=submit]"), async () => {
+    const saved = await teamRun(supabase.from("team_messages").insert({ author_id: profile.id, body }).select("*").single());
+    teamApply(watch.team.messages, saved);
+    ui.chatDraft = "";
+    form.body.value = "";
+    teamPatch();
+    form.body.focus();
+  }, app.querySelector("[data-err]"));
+}
+
 // ---------------------------------------------------------------- events
 
 app.addEventListener("click", async (e) => {
   const el = e.target.closest("[data-action]");
   if (!el) return;
-  if (/^(reg|q)-/.test(el.dataset.action)) return registrationAction(el);
+  if (el.dataset.action.startsWith("reg-")) return registrationAction(el);
+  if (el.dataset.action.startsWith("team-")) return teamAction(el);
   const err = app.querySelector("[data-err]");
   const t = store.tournament;
   switch (el.dataset.action) {
@@ -1386,16 +1547,6 @@ app.addEventListener("click", async (e) => {
       return newEditionModal();
     case "new-friendly":
       return friendlyModal();
-    case "set-mode": {
-      const rated = el.dataset.rated === "true";
-      if (tournamentMode() === (rated ? "rated" : "unrated")) return;
-      const done = store.matches.filter((m) => !isFriendly(m) && !m.tiebreak_of && m.status === "completed").length;
-      if (done && !confirm(`${done} finished game${done === 1 ? "" : "s"} will ${rated ? "now change" : "no longer change"} players' ratings. Continue?`)) return;
-      return withBusy(el, async () => {
-        await setTournamentRated(t.id, rated);
-        await refresh();
-      }, app.querySelector("[data-mode-err]"));
-    }
     case "fill-bots":
       showTestMsg("");
       return withBusy(el, async () => {
@@ -1415,7 +1566,7 @@ app.addEventListener("click", async (e) => {
     case "remove-bots": {
       const d = openModal(
         "Remove all test data?",
-        `<p class="muted">Every bot account is deleted, with every game a bot played, the knockout bracket and the updates about those games. Real players' ratings are restored.</p>
+        `<p class="muted">Every bot account is deleted, with every game a bot played, the knockout bracket and the updates about those games.</p>
          <label class="row gap-3 mt-4" style="cursor:pointer;align-items:flex-start"><input type="checkbox" id="rm-real" checked style="width:1.1rem;height:1.1rem;flex-shrink:0;accent-color:#d9dce2;margin-top:0.2rem"><span class="small"><strong>Also reset games between real players</strong><span class="hint" style="display:block">Puts them back to not started. Leave this on unless real players have already played real games.</span></span></label>
          <div data-err class="mt-4"></div>
          <div class="modal-actions"><button class="btn" data-close>Cancel</button><button class="btn btn-danger" data-confirm>${icon("trash", "bold")} Remove test data</button></div>`,
@@ -1458,7 +1609,6 @@ app.addEventListener("click", async (e) => {
       ui.round = el.dataset.round;
       return draw();
     case "generate-fixtures":
-      if (!tournamentMode()) return;
       if (store.matches.some((m) => m.stage === "group") && !confirm("This deletes all group games, including any results, and makes them again from the current groups. Continue?")) return;
       return withBusy(el, async () => {
         await generateGroupFixtures(t.id, store.groups, store.groupPlayers);
@@ -1503,6 +1653,12 @@ app.addEventListener("click", async (e) => {
 });
 
 app.addEventListener("change", async (e) => {
+  const arbiter = e.target.closest("[data-arbiter]");
+  if (arbiter) {
+    await withBusy(null, () => setArbiter(arbiter.dataset.arbiter, arbiter.value), app.querySelector("[data-err]"));
+    arbiter.blur();
+    return draw();
+  }
   const slot = e.target.closest("[data-slot]");
   if (!slot) return;
   slot.disabled = true;
@@ -1513,6 +1669,8 @@ app.addEventListener("change", async (e) => {
 });
 
 app.addEventListener("input", (e) => {
+  if (e.target.dataset.input === "team-chat") ui.chatDraft = e.target.value;
+  if (e.target.id === "reg-url") ui.regDraft = e.target.value;
   if (e.target.dataset.input !== "search") return;
   ui.query = e.target.value;
   const pos = e.target.selectionStart;
@@ -1523,6 +1681,16 @@ app.addEventListener("input", (e) => {
 });
 
 app.addEventListener("submit", async (e) => {
+  const link = e.target.closest("[data-form=reg-link]");
+  if (link) {
+    e.preventDefault();
+    return saveFormLink(link.url.value, link.querySelector("[type=submit]"));
+  }
+  const chat = e.target.closest("[data-form=team-chat]");
+  if (chat) {
+    e.preventDefault();
+    return sendTeamMessage(chat);
+  }
   const auto = e.target.closest("[data-form=autopilot]");
   if (auto) {
     e.preventDefault();

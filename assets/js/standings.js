@@ -1,6 +1,6 @@
 // Group tables and tiebreaks.
 
-export const TIEBREAK_NOTE = "Win 1, draw ½. Ties go to Sonneborn-Berger, then wins, then head-to-head, then rating.";
+export const TIEBREAK_NOTE = "Win 1, draw ½. Ties go to Sonneborn-Berger, then wins, then head-to-head, then the order of the draw.";
 
 function scoreFor(m, playerId) {
   if (!m.result) return null;
@@ -16,7 +16,7 @@ export function groupStandings(groupId, groupPlayers, matches, profileById) {
   const rows = new Map(
     members.map((gp) => [
       gp.player_id,
-      { playerId: gp.player_id, played: 0, wins: 0, draws: 0, losses: 0, points: 0, sb: 0, rating: profileById.get(gp.player_id)?.rating ?? 0 },
+      { playerId: gp.player_id, played: 0, wins: 0, draws: 0, losses: 0, points: 0, sb: 0, seed: gp.seed },
     ]),
   );
 
@@ -55,7 +55,7 @@ export function groupStandings(groupId, groupPlayers, matches, profileById) {
   }
 
   return [...rows.values()].sort(
-    (a, b) => b.points - a.points || b.sb - a.sb || b.wins - a.wins || b.mini - a.mini || b.rating - a.rating,
+    (a, b) => b.points - a.points || b.sb - a.sb || b.wins - a.wins || b.mini - a.mini || a.seed - b.seed,
   );
 }
 

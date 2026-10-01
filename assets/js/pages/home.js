@@ -1,12 +1,12 @@
 // Dashboard: the players' side of the portal.
 //
 // A player sees their own tournament: next game and countdown, updates,
-// record, rating history, group table and results. Staff see the
+// record, recent form, group table and results. Staff see the
 // organiser's overview, and can open any player's dashboard (?player=<id>)
 // to see exactly what that player sees.
 
 import { isStaff } from "../auth.js";
-import { store, effectiveStatus, involves, sortByTime, matchContext, bracketGames, isKnockout, timeControlLabel, tournamentUnrated } from "../store.js";
+import { store, effectiveStatus, involves, sortByTime, matchContext, bracketGames, isKnockout, timeControlLabel, TOTAL_GAMES } from "../store.js";
 import { countdownHtml, formatDateTime, serverNow } from "../time.js";
 import { formatPoints, groupStandings } from "../standings.js";
 import { esc, groupTableHtml, icon, liveTag, matchRowHtml, playerHtml, resultText, sectionHead } from "../ui.js";
@@ -20,8 +20,8 @@ const STATUS_LINE = {
   knockout: "Knockout stage. One game, one winner, every round.",
   complete: "The tournament is complete. A champion has been crowned.",
 };
-const STAGE_NAME = { group: "Group stage", r16: "Round of 16", qf: "Quarterfinal", sf: "Semifinal", final: "Final" };
-const STAGE_ORDER = ["group", "r16", "qf", "sf", "final"];
+const STAGE_NAME = { group: "Group stage", r16: "Round of 16", qf: "Quarterfinal", sf: "Semifinal", third: "Third-place game", final: "Final" };
+const STAGE_ORDER = ["group", "r16", "qf", "sf", "third", "final"];
 
 // Whose dashboard this is, and their updates feed. Declared before the
 // page draws for the first time.
@@ -69,12 +69,6 @@ function splitName(name) {
 // ---------------------------------------------------------------- header band
 
 function hero(p) {
-  const band = heroBand(p);
-  if (band.lede && tournamentUnrated()) band.lede += " This is an unrated tournament: ratings don't change.";
-  return band;
-}
-
-function heroBand(p) {
   subjectId = subjectFor(p);
   const first = esc(p.full_name.split(" ")[0]);
   const t = store.tournament;
@@ -115,7 +109,7 @@ function heroBand(p) {
         : STATUS_LINE[t.status],
       actions: next ? `<a class="btn btn-primary btn-lg" href="play.html?id=${next.id}" data-magnetic>${isLive ? (mine ? "Play now" : "Watch now") : "Enter the Arena"} ${icon("arrow-right", "bold")}</a>` : "",
       stats: [
-        { value: who.rating, label: "Rating" },
+        { value: rec.games, label: "Games played" },
         { value: `${rec.w}-${rec.d}-${rec.l}`, label: "Won-drawn-lost" },
         { value: formatPoints(rec.points), label: "Points" },
       ],
@@ -133,14 +127,14 @@ function heroBand(p) {
     stats: [
       { value: entrants, label: "Players" },
       { value: live, label: "Live now", live: live > 0 },
-      { value: played, label: `of ${games.length || 63} games played` },
+      { value: played, label: `of ${games.length || TOTAL_GAMES} games played` },
     ],
   };
 }
 
 function ticker() {
   const t = store.tournament;
-  return [t?.name ?? "Amaze Youth Chess Tournament", "32 Players", "8 Groups", "63 Games", "One Champion", "Think. Play. Become legendary."];
+  return [t?.name ?? "Amaze Youth Chess Tournament", "32 Players", "8 Groups", `${TOTAL_GAMES} Games`, "One Champion", "Think. Play. Become legendary."];
 }
 
 // ---------------------------------------------------------------- derived player data
@@ -177,6 +171,9 @@ function standing(id) {
   if (ko.length) {
     const deepest = ko.sort((a, b) => STAGE_ORDER.indexOf(b.stage) - STAGE_ORDER.indexOf(a.stage))[0];
     if (deepest.stage === "final" && deepest.winner_id === id) return { value: "Champion", sub: "Won the final" };
+    if (deepest.stage === "final" && deepest.winner_id) return { value: "2nd", sub: "Runner-up" };
+    if (deepest.stage === "third" && deepest.winner_id) return deepest.winner_id === id ? { value: "3rd", sub: "Won the third-place game" } : { value: "4th", sub: "Fourth place" };
+    if (deepest.stage === "third") return { value: "Third place", sub: "Plays for third" };
     if (deepest.winner_id && deepest.winner_id !== id) return { value: "Out", sub: `Lost in the ${STAGE_NAME[deepest.stage]}` };
     return { value: STAGE_NAME[deepest.stage], sub: deepest.winner_id === id ? "Through to the next round" : "Still in" };
   }
@@ -190,22 +187,6 @@ function standing(id) {
   const suffix = ["th", "st", "nd", "rd"][rank] ?? "th";
   const note = done ? (rank <= 2 ? " · qualified" : " · eliminated") : rank <= 2 ? " · qualifying place" : "";
   return { value: `${rank}${suffix}`, sub: `Group ${g?.label ?? ""}${note}` };
-}
-
-// Ratings after each rated game, oldest first, ending at today's rating.
-function ratingHistory(id) {
-  const p = store.profileById.get(id);
-  const games = store.matches
-    .filter((m) => involves(m, id) && m.status === "completed" && m.ratings_applied)
-    .sort((a, b) => new Date(a.ended_at ?? a.updated_at) - new Date(b.ended_at ?? b.updated_at));
-  const deltas = games.map((m) => (m.white_id === id ? m.white_rating_delta : m.black_rating_delta) ?? 0);
-  let r = p.rating - deltas.reduce((a, b) => a + b, 0);
-  const points = [{ rating: r, label: "Start" }];
-  games.forEach((m, i) => {
-    r += deltas[i];
-    points.push({ rating: r, label: matchContext(m), delta: deltas[i] });
-  });
-  return points;
 }
 
 // ---------------------------------------------------------------- content
@@ -232,8 +213,6 @@ function dashboard(id, viewer) {
   const mine = id === viewer.id;
   const rec = record(id);
   const st = standing(id);
-  const hist = ratingHistory(id);
-  const change = who.rating - hist[0].rating;
   const next = nextGame(id);
   const myGroup = store.groups.find((g) => store.groupPlayers.some((gp) => gp.group_id === g.id && gp.player_id === id));
   const results = store.matches
@@ -242,8 +221,8 @@ function dashboard(id, viewer) {
   const upcoming = store.matches.filter((m) => involves(m, id) && m.status !== "completed" && m.id !== next?.id).sort(sortByTime);
 
   const tiles = `<div class="stat-tiles" data-stagger="load">
-    <div class="panel stat-tile"><span class="v">${who.rating}</span><span class="k">Rating</span><span class="sub">${tournamentUnrated() ? "Unrated tournament: no change" : change === 0 ? "No change yet" : `${change > 0 ? "+" : ""}${change} this tournament`}</span></div>
-    <div class="panel stat-tile"><span class="v">${rec.w}<span class="dim">-</span>${rec.d}<span class="dim">-</span>${rec.l}</span><span class="k">Won-drawn-lost</span><span class="sub">${rec.games} game${rec.games === 1 ? "" : "s"} played</span></div>
+    <div class="panel stat-tile"><span class="v">${rec.games}</span><span class="k">Games played</span><span class="sub">${upcoming.length + (next ? 1 : 0)} still to play</span></div>
+    <div class="panel stat-tile"><span class="v">${rec.w}<span class="dim">-</span>${rec.d}<span class="dim">-</span>${rec.l}</span><span class="k">Won-drawn-lost</span><span class="sub">In group and knockout games</span></div>
     <div class="panel stat-tile"><span class="v">${formatPoints(rec.points)}</span><span class="k">Points</span><span class="sub">Win 1, draw ½</span></div>
     <div class="panel stat-tile"><span class="v">${esc(st.value)}</span><span class="k">Standing</span><span class="sub">${esc(st.sub)}</span></div>
   </div>`;
@@ -264,10 +243,20 @@ function dashboard(id, viewer) {
       </div>
     </section>
 
-    <section class="s-block">
-      ${sectionHead("Form", "Rating", "history.", `${hist.length - 1} rated game${hist.length === 2 ? "" : "s"}. Elo, K = 32. ${tournamentUnrated() ? "This tournament is unrated, so its games don't appear here." : "Armageddon games are not rated."}`)}
-      <div class="panel pad">${ratingChart(hist)}</div>
-    </section>
+    ${results.length
+      ? `<section class="s-block">
+          ${sectionHead("Form", "Game by", "game.", "Every finished game, oldest first.")}
+          <div class="panel pad form-strip">${results
+            .slice()
+            .reverse()
+            .map((m) => {
+              const sc = scoreFor(m, id);
+              const mark = sc === 1 ? "W" : sc === 0.5 ? "D" : "L";
+              return `<a class="form-chip ${mark}" href="play.html?id=${m.id}" title="${esc(matchContext(m))}"><b>${mark}</b><span>${esc(store.profileById.get(m.white_id === id ? m.black_id : m.white_id)?.full_name.split(" ")[0] ?? "")}</span></a>`;
+            })
+            .join("")}</div>
+        </section>`
+      : ""}
 
     <section class="s-block">
       ${sectionHead("Games", mine ? "Your" : "Their", "games.", "Open a finished game to replay it with a Stockfish review.")}
@@ -285,39 +274,12 @@ function dashboard(id, viewer) {
 function resultRow(m, id) {
   const s = m.result ? scoreFor(m, id) : null;
   const opp = m.white_id === id ? m.black_id : m.white_id;
-  const d = m.white_id === id ? m.white_rating_delta : m.black_rating_delta;
   const mark = s === 1 ? "Won" : s === 0.5 ? "Drew" : "Lost";
   return `<a href="play.html?id=${m.id}" class="match-row">
     <span class="context">${esc(matchContext(m))}</span>
     <span class="sides"><span class="side"><span class="colour-dot ${m.white_id === id ? "white" : "black"}" aria-label="${m.white_id === id ? "white" : "black"}"></span><span class="small dim">vs</span> ${playerHtml(opp)}</span><span class="context-mobile">${esc(matchContext(m))}${m.end_reason ? ` · ${esc(m.end_reason)}` : ""}</span></span>
-    <span class="status"><span class="num small strong">${mark} ${resultText(m)}</span><span class="xs ${d < 0 ? "signal" : "dim"}">${d != null ? `${d > 0 ? "+" : ""}${d}` : "Review"}</span></span>
+    <span class="status"><span class="num small strong">${mark} ${resultText(m)}</span><span class="xs dim">Review</span></span>
   </a>`;
-}
-
-function ratingChart(points) {
-  if (points.length < 2) {
-    return `<p class="muted small">The chart starts after the first rated game. Starting rating: <span class="num strong" style="color:var(--fg)">${points[0].rating}</span>.</p>`;
-  }
-  const W = 600;
-  const H = 180;
-  const pad = 18;
-  const values = points.map((p) => p.rating);
-  const min = Math.min(...values) - 10;
-  const max = Math.max(...values) + 10;
-  const x = (i) => pad + (i / (points.length - 1)) * (W - pad * 2);
-  const y = (v) => H - pad - ((v - min) / (max - min)) * (H - pad * 2);
-  const line = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.rating).toFixed(1)}`).join(" ");
-  const area = `${line} L${x(points.length - 1).toFixed(1)},${H - pad} L${pad},${H - pad} Z`;
-  const dots = points
-    .map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.rating).toFixed(1)}" r="3.5" fill="#07070a" stroke="#e4e7ec" stroke-width="1.5"><title>${esc(p.label)}: ${p.rating}${p.delta != null ? ` (${p.delta > 0 ? "+" : ""}${p.delta})` : ""}</title></circle>`)
-    .join("");
-  return `<div class="row between mb-3"><span class="num dim small">${points[0].rating}</span><span class="num strong">${points[points.length - 1].rating}</span></div>
-    <svg class="rating-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Rating history">
-      <defs><linearGradient id="rc" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#e4e7ec" stop-opacity="0.28"/><stop offset="1" stop-color="#e4e7ec" stop-opacity="0"/></linearGradient></defs>
-      <path d="${area}" fill="url(#rc)"/>
-      <path d="${line}" fill="none" stroke="#e4e7ec" stroke-width="2" vector-effect="non-scaling-stroke"/>
-      ${dots}
-    </svg>`;
 }
 
 function nextGameHero(m, id, mine) {
@@ -373,7 +335,7 @@ function firstSteps() {
   const steps = [
     { n: "01", title: "Create the edition", body: "Name this year's tournament and set the clock. Eight empty groups are made for you.", href: "admin.html#tournament", cta: "Create edition" },
     { n: "02", title: "Add the players", body: "Give each of the 32 players, moderators and commentators an email and password.", href: "admin.html#people", cta: "Add people" },
-    { n: "03", title: "Run the draw", body: "A seeded draw places one player from each rating pot into every group.", href: "admin.html#groups", cta: "Open the draw" },
+    { n: "03", title: "Run the draw", body: "A random draw deals the 32 players into the eight groups, or place them by hand.", href: "admin.html#groups", cta: "Open the draw" },
   ];
   return `<section class="s-block">
     ${sectionHead("Getting started", "Three steps", "to the first move.")}

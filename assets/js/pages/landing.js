@@ -1,6 +1,7 @@
 // Public landing page: preloader, pinned hero, the road to the crown, the
 // ring of groups, a live demo board, the roles deck, and the footer.
 
+import { formLink } from "../registration.js";
 import { supabase } from "../supabase.js";
 import { currentProfile } from "../auth.js";
 import { reduced, hasGsap, initSmoothScroll, getLenis, animateIn, navAutoHide, progressRing, cursorDot } from "../motion.js";
@@ -15,7 +16,7 @@ const motion = hasGsap && !reduced;
 
 // ---------------------------------------------------------------- data
 
-// The current edition's year and registration status are public.
+// The current edition's year and registration form link are public.
 const edition = supabase
   .from("tournaments")
   .select("year, registration")
@@ -28,8 +29,9 @@ edition.then((data) => {
   if (data?.year) document.querySelectorAll("[data-year]").forEach((el) => (el.textContent = data.year));
 });
 
-// "Register now" says what the registration page will show: open, coming
-// soon or closed. Members who are already in get "Open portal" instead.
+// "Register now" opens the organisers' Google Form. Until they add its link
+// the buttons say "Registration coming soon" and go nowhere. Members who are
+// already in get "Open portal" instead.
 Promise.all([edition, currentProfile()]).then(([data, profile]) => {
   const arrow = `<i class="ph-bold ph-arrow-right"></i>`;
   if (profile) {
@@ -39,14 +41,30 @@ Promise.all([edition, currentProfile()]).then(([data, profile]) => {
     });
     document.querySelectorAll("[data-register-link]").forEach((a) => {
       a.href = "home.html";
+      a.removeAttribute("aria-disabled");
       a.innerHTML = `Open the portal ${arrow}`;
     });
     return;
   }
-  const form = data?.registration;
-  const closed = form?.status === "closed" || (form?.status === "open" && form.closes_at && Date.now() > Date.parse(form.closes_at));
-  const label = form?.status === "open" && !closed ? `Register now ${arrow}` : closed ? "Registration closed" : "Registration coming soon";
-  document.querySelectorAll("[data-register-link]").forEach((a) => (a.innerHTML = label));
+  const link = formLink(data?.registration?.form_url);
+  document.querySelectorAll("[data-register-link]").forEach((a) => {
+    if (link) {
+      a.href = link;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.removeAttribute("aria-disabled");
+      a.innerHTML = `Register now ${arrow}`;
+    } else {
+      a.removeAttribute("href");
+      a.setAttribute("aria-disabled", "true");
+      a.innerHTML = "Registration coming soon";
+    }
+  });
+  const foot = document.querySelector("[data-register-foot]");
+  if (foot && link) {
+    foot.hidden = false;
+    foot.querySelector("a").href = link;
+  }
 });
 
 // ---------------------------------------------------------------- static pieces (built for every visitor)
@@ -90,7 +108,6 @@ if (!motion) {
   road();
   ring();
   deck();
-  ratingLine();
   ctaAndFooter();
   animateIn();
   document.fonts.ready.then(() => {
@@ -498,19 +515,7 @@ function stackDeck(gap) {
   return () => gsap.set(cards, { clearProps: "all" });
 }
 
-// ---------------------------------------------------------------- ratings, cta, footer
-
-function ratingLine() {
-  const path = document.querySelector("[data-draw]");
-  const len = path.getTotalLength();
-  gsap.fromTo(path, { strokeDasharray: len, strokeDashoffset: len }, {
-    strokeDashoffset: 0,
-    duration: 2.2,
-    ease: "power2.inOut",
-    scrollTrigger: { trigger: path, start: "top 85%", once: true },
-  });
-  gsap.from(".rchart .area", { autoAlpha: 0, duration: 1.4, delay: 0.8, scrollTrigger: { trigger: path, start: "top 85%", once: true } });
-}
+// ---------------------------------------------------------------- cta, footer
 
 function ctaAndFooter() {
   gsap.fromTo("[data-cta-img]", { scale: 1.2, yPercent: 6 }, { scale: 1, yPercent: -4, ease: "none", scrollTrigger: { trigger: ".cta", start: "top bottom", end: "bottom top", scrub: true } });

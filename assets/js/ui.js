@@ -21,7 +21,6 @@ const LINKS = [
   { href: "fixtures.html", label: "Fixtures", icon: "list-bullets", key: "fixtures" },
   { href: "groups.html", label: "Groups", icon: "squares-four", key: "groups" },
   { href: "bracket.html", label: "Bracket", icon: "tree-structure", key: "bracket" },
-  { href: "leaderboard.html", label: "Leaderboard", short: "Ranks", icon: "chart-bar", key: "leaderboard" },
 ];
 
 // Top bar (desktop) and bottom tab bar (phones), with the current page lit.
@@ -145,7 +144,7 @@ export function mountFooter() {
       </div>
       <div>
         <h4>Portal</h4>
-        <ul><li><a href="home.html">Dashboard</a></li><li><a href="play.html">Arena</a></li><li><a href="fixtures.html">Fixtures</a></li><li><a href="groups.html">Groups</a></li><li><a href="bracket.html">Bracket</a></li><li><a href="leaderboard.html">Leaderboard</a></li></ul>
+        <ul><li><a href="home.html">Dashboard</a></li><li><a href="play.html">Arena</a></li><li><a href="fixtures.html">Fixtures</a></li><li><a href="groups.html">Groups</a></li><li><a href="bracket.html">Bracket</a></li></ul>
       </div>
       <div>
         <h4>Tournament</h4>
@@ -165,7 +164,7 @@ export function mountFooter() {
 export function playerHtml(id, { me = null, align = "" } = {}) {
   const p = id ? store.profileById.get(id) : null;
   if (!p) return `<span class="dim">To be decided</span>`;
-  return `<span class="player${id === me ? " me" : ""}${align}"><span class="pname">${esc(p.full_name)}</span>${p.is_bot ? botTag() : ""}<span class="rating">${p.rating}</span></span>`;
+  return `<span class="player${id === me ? " me" : ""}${align}"><span class="pname">${esc(p.full_name)}</span>${p.is_bot ? botTag() : ""}</span>`;
 }
 
 // Marks a test bot wherever a name appears.
@@ -227,7 +226,7 @@ export function groupTableHtml(group, { me = null, compact = false } = {}) {
         : `<td class="c num muted">${r.wins}</td><td class="c num muted">${r.draws}</td><td class="c num muted">${r.losses}</td><td class="c num dim">${formatPoints(r.sb)}</td>`;
       return `<tr class="${r.playerId === me ? "me" : ""}">
         <td style="width:3.5rem"><span class="rank${i < 2 ? " through" : ""}">${i + 1}</span></td>
-        <td style="max-width:0"><span class="truncate" style="display:block;${r.playerId === me ? "font-weight:600" : ""}">${esc(p?.full_name ?? "Unknown player")}</span><span class="num xs dim">${p?.rating ?? ""}</span></td>
+        <td style="max-width:0"><span class="truncate" style="display:block;${r.playerId === me ? "font-weight:600" : ""}">${esc(p?.full_name ?? "Unknown player")}</span>${p?.school ? `<span class="xs dim truncate" style="display:block">${esc(p.school)}</span>` : ""}</td>
         ${cells}
         <td class="r num strong">${formatPoints(r.points)}</td>
       </tr>`;

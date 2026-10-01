@@ -7,7 +7,7 @@
   <title>Amaze Youth Chess Tournament 2027 · Think. Play. Become legendary.</title>
   <meta name="description" content="Thirty-two young players, eight groups, one champion. The official home of the Amaze Youth Chess Tournament: format, road to the final, and the portal where every game is played live.">
   <meta property="og:title" content="Amaze Youth Chess Tournament 2027">
-  <meta property="og:description" content="32 players. 8 groups. 63 games. One champion.">
+  <meta property="og:description" content="32 players. 8 groups. 64 games. One champion.">
   <meta property="og:image" content="assets/brand/rook.webp">
   <link rel="icon" type="image/png" href="assets/brand/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -79,7 +79,7 @@
           <div class="hv__intro-bottom">
             <p class="hv__tagline" data-intro>Think. Play. Become legendary.</p>
             <div class="hv__ctas" data-intro>
-              <a class="btn btn-primary btn-lg" href="register.html" data-register-link data-magnetic>Register now <i class="ph-bold ph-arrow-right"></i></a>
+              <a class="btn btn-primary btn-lg" data-register-link aria-disabled="true" data-magnetic>Registration coming soon</a>
               <a class="btn btn-lg hv__ghost-btn" href="#format" data-magnetic>See the format</a>
             </div>
           </div>
@@ -114,7 +114,7 @@
       <div class="ticker__track">
         <span class="ticker__item">32 Players <img src="assets/brand/logo.png" alt=""></span>
         <span class="ticker__item soft">8 Groups <img src="assets/brand/logo.png" alt=""></span>
-        <span class="ticker__item">63 Games <img src="assets/brand/logo.png" alt=""></span>
+        <span class="ticker__item">64 Games <img src="assets/brand/logo.png" alt=""></span>
         <span class="ticker__item soft">5 Rounds <img src="assets/brand/logo.png" alt=""></span>
         <span class="ticker__item">One Champion <img src="assets/brand/logo.png" alt=""></span>
         <span class="ticker__item soft">Think. Play. Become legendary. <img src="assets/brand/logo.png" alt=""></span>
@@ -142,7 +142,7 @@
             <div>
               <p class="stat chrome-text" data-count="32">32</p>
               <p class="label">Players</p>
-              <p class="mt-2">Invited by the organisers, each with a rating that moves after every game.</p>
+              <p class="mt-2">Registered with the organisers and drawn into eight groups of four.</p>
             </div>
           </article>
           <article class="panel">
@@ -151,7 +151,7 @@
           </article>
           <article class="panel">
             <span class="eyebrow">Games</span>
-            <div><p class="stat" data-count="63">63</p><p class="label">Games in total</p></div>
+            <div><p class="stat" data-count="64">64</p><p class="label">Games in total</p></div>
           </article>
           <article class="panel b-wide">
             <span class="eyebrow">Clock</span>
@@ -194,7 +194,7 @@
           </article>
           <article class="panel stage-card final" data-left="1">
             <i class="ph-fill ph-trophy trophy" aria-hidden="true"></i>
-            <div><p class="step">1 game</p><h3>The final</h3><p>Two players. One board. The winner is this year's champion.</p></div>
+            <div><p class="step">2 games</p><h3>The final</h3><p>Two players. One board. The winner is this year's champion. The semifinal losers play for third place.</p></div>
             <div class="players" data-dots="32" data-keep="1"></div>
           </article>
         </div>
@@ -248,7 +248,7 @@
           </ol>
         </div>
         <div class="deck__stack">
-          <article class="deck__card"><div class="ico"><i class="ph ph-user"></i></div><h3>Players</h3><p>Your group, your next opponent and a live countdown to the moment your board unlocks.</p><ul><li>Next game</li><li>Countdown</li><li>Play on the board</li><li>Your rating</li></ul></article>
+          <article class="deck__card"><div class="ico"><i class="ph ph-user"></i></div><h3>Players</h3><p>Your group, your next opponent and a live countdown to the moment your board unlocks.</p><ul><li>Next game</li><li>Countdown</li><li>Play on the board</li><li>Your results</li></ul></article>
           <article class="deck__card"><div class="ico"><i class="ph ph-sliders-horizontal"></i></div><h3>Moderators</h3><p>Run match day: draw the groups, schedule every round, record results and settle tiebreaks.</p><ul><li>Seeded draw</li><li>Scheduling</li><li>Results</li><li>Tiebreaks</li></ul></article>
           <article class="deck__card"><div class="ico"><i class="ph ph-microphone"></i></div><h3>Commentators</h3><p>Watch every live board at once and post commentary right beside the game.</p><ul><li>All live boards</li><li>Move lists</li><li>Live commentary</li></ul></article>
           <article class="deck__card"><div class="ico"><i class="ph ph-crown-simple"></i></div><h3>Admins</h3><p>Everything moderators can do, plus creating each year's edition and every account.</p><ul><li>Editions</li><li>Accounts</li><li>Bracket</li><li>Everything else</li></ul></article>
@@ -256,30 +256,7 @@
       </div>
     </section>
 
-    <!-- 10. Ratings -->
-    <section class="section" id="ratings">
-      <div class="wrap-x">
-        <p class="eyebrow" data-reveal>Ratings</p>
-        <h2 class="h2 mt-4" data-split>Every game <span class="soft">moves the needle.</span></h2>
-        <p class="lede" data-reveal>Ratings use the Elo system. Beat a stronger player and you climb further; lose to a lower-rated one and it costs more. The leaderboard updates the moment a game ends.</p>
-        <div class="rating-grid" data-stagger>
-          <div class="panel rcard"><p class="xs dim">Example · winner</p><p class="who mt-2">White, 1200</p><p class="num-big chrome-text" data-count="1216">1216</p><p class="delta">+16 after the win</p></div>
-          <div class="panel rcard"><p class="xs dim">Example · loser</p><p class="who mt-2">Black, 1200</p><p class="num-big" data-count="1184">1184</p><p class="delta down">-16 after the loss</p></div>
-          <div class="panel rchart">
-            <p class="xs dim">Example · a rating across a tournament</p>
-            <svg viewBox="0 0 400 140" aria-hidden="true">
-              <defs><linearGradient id="areaFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgb(228 231 236 / .22)"/><stop offset="1" stop-color="rgb(228 231 236 / 0)"/></linearGradient></defs>
-              <line class="grid-line" x1="0" y1="35" x2="400" y2="35"/><line class="grid-line" x1="0" y1="70" x2="400" y2="70"/><line class="grid-line" x1="0" y1="105" x2="400" y2="105"/>
-              <path class="area" d="M0 110 L60 94 L120 100 L180 72 L240 60 L300 66 L360 34 L400 22 L400 140 L0 140 Z"/>
-              <path class="line" data-draw d="M0 110 L60 94 L120 100 L180 72 L240 60 L300 66 L360 34 L400 22"/>
-              <circle class="dot" cx="400" cy="22" r="4"/>
-            </svg>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 11. FAQ -->
+    <!-- 10. FAQ -->
     <section class="section" id="faq" style="padding-top:0">
       <div class="wrap-x faq">
         <div>
@@ -291,23 +268,23 @@
           <details><summary>How do I sign in?<i class="ph ph-plus"></i></summary><p class="answer">With the email and password your tournament admin gives you. Players, moderators, commentators and admins all use the same sign-in page.</p></details>
           <details><summary>What if I miss the start of my game?<i class="ph ph-plus"></i></summary><p class="answer">The board unlocks at the scheduled time and white's clock starts straight away. If a player never shows up, their clock runs out and they lose on time.</p></details>
           <details><summary>What happens if a knockout game is drawn?<i class="ph ph-plus"></i></summary><p class="answer">Knockout games need a winner, so the moderators hold a tiebreak and record who goes through. The bracket moves them on automatically.</p></details>
-          <details><summary>How are ties in a group decided?<i class="ph ph-plus"></i></summary><p class="answer">By Sonneborn-Berger score first, then the number of wins, then the game between the tied players, then rating.</p></details>
+          <details><summary>How are ties in a group decided?<i class="ph ph-plus"></i></summary><p class="answer">By Sonneborn-Berger score first, then the number of wins, then the games between the tied players, then the order of the draw.</p></details>
         </div>
       </div>
     </section>
 
-    <!-- 12. Final CTA -->
+    <!-- 11. Final CTA -->
     <section class="cta" aria-label="Register">
       <img class="cta__img" src="assets/brand/scenes/king.webp" alt="" aria-hidden="true" width="1920" height="1080" loading="lazy" data-cta-img>
       <div class="cta__copy">
         <h2 class="display chrome-text" data-split>Your move.</h2>
         <p data-reveal>Register for this year's tournament. Once the organisers confirm your place, your group, your opponents and the countdown to your first game are waiting in the portal.</p>
-        <a class="btn btn-primary btn-lg" href="register.html" data-register-link data-magnetic data-reveal>Register now <i class="ph-bold ph-arrow-right"></i></a>
+        <a class="btn btn-primary btn-lg" data-register-link aria-disabled="true" data-magnetic data-reveal>Registration coming soon</a>
       </div>
     </section>
   </main>
 
-  <!-- 13. Footer -->
+  <!-- 12. Footer -->
   <footer class="footer">
     <div class="footer__cols">
       <div>
@@ -320,7 +297,7 @@
       </div>
       <div>
         <h4>Portal</h4>
-        <ul><li><a href="register.html">Register</a></li><li><a href="login.html">Sign in</a></li><li><a href="fixtures.html">Fixtures</a></li><li><a href="bracket.html">Bracket</a></li><li><a href="leaderboard.html">Leaderboard</a></li></ul>
+        <ul><li data-register-foot hidden><a target="_blank" rel="noopener">Register</a></li><li><a href="login.html">Sign in</a></li><li><a href="fixtures.html">Fixtures</a></li><li><a href="groups.html">Groups</a></li><li><a href="bracket.html">Bracket</a></li></ul>
       </div>
     </div>
     <div class="footer__base"><span>© <span data-year>2027</span> Amaze Youth Chess Tournament</span><span>Think. Play. Become legendary.</span></div>

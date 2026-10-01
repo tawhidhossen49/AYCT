@@ -10,7 +10,7 @@ import { callFunction, supabase } from "../supabase.js";
 import {
   store, loadAll, subscribe, upsertMatch, effectiveStatus, matchContext, involves, sortByTime,
   baseClocks, timeControlLabel,
-  isKnockout, isRated,
+  isKnockout,
 } from "../store.js";
 import { countdownHtml, formatClock, formatDateTime, formatTime, serverNow, startCountdowns, syncServerClock } from "../time.js";
 import { botTag, emptyState, esc, icon, liveTag, mountShell, notice, openModal, playerHtml, resultText, sectionHead } from "../ui.js";
@@ -215,7 +215,7 @@ async function startGame() {
   layout();
   update();
 
-  // Live updates: this game directly, plus the store (tiebreaks, ratings).
+  // Live updates: this game directly, plus the store (tiebreaks, the bracket).
   supabase
     .channel(`game-${matchId}`)
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "matches", filter: `id=eq.${matchId}` }, (p) => applyMatch(p.new))
@@ -483,7 +483,6 @@ function renderHead() {
     <div class="title">${st === "live" ? liveTag() : ""}<h1>${esc(matchContext(m))}</h1>${badge}</div>
     <div class="meta">
       <span>${icon("timer")} ${timeControlLabel(m)}</span>
-      <span>${icon(isRated(m) ? "chart-line-up" : "minus-circle")} ${isRated(m) ? "Rated" : "Unrated"}</span>
       ${m.scheduled_at ? `<span>${icon("calendar-blank")} ${formatDateTime(m.scheduled_at)}</span>` : ""}
       <span>${icon("users")} <b data-viewers>${S.viewers}</b> watching</span>
     </div>`;
@@ -519,7 +518,7 @@ function pcardHtml(colour) {
   }
   return `<div class="avatar ${colour}" aria-hidden="true">${esc(initials(name))}${pres ? `<span class="presence ${pres}" title="${pres === "on" ? "Online" : pres === "away" ? "Tab hidden" : "Not here"}"></span>` : ""}</div>
     <div class="who">
-      <div class="line1"><span class="pname">${esc(name)}</span>${p?.is_bot ? botTag() : ""}${p ? `<span class="prating">${p.rating}</span>` : ""}${id === S.profile.id ? `<span class="you">You</span>` : ""}${m.draw_odds && colour === "black" ? `<span class="odds">Draw odds</span>` : ""}</div>
+      <div class="line1"><span class="pname">${esc(name)}</span>${p?.is_bot ? botTag() : ""}${id === S.profile.id ? `<span class="you">You</span>` : ""}${m.draw_odds && colour === "black" ? `<span class="odds">Draw odds</span>` : ""}</div>
       <div class="line2"><span class="captured">${caps}</span>${lead > 0 ? `<span class="material">+${lead}</span>` : ""}${note}</div>
     </div>
     <div class="aclock" data-clock="${colour}" role="timer" aria-label="${colour} clock"><i class="ph-bold ph-hourglass-medium"></i><span></span></div>`;
@@ -819,11 +818,9 @@ function renderInfo() {
       <dt>Stage</dt><dd>${esc(matchContext(m))}</dd>
       <dt>White</dt><dd>${esc(nameOf(m.white_id))}</dd>
       <dt>Black</dt><dd>${esc(nameOf(m.black_id))}</dd>
-      <dt>Rated</dt><dd>${isRated(m) ? "Yes, ratings change" : "No, ratings don't change"}</dd>
       <dt>Time control</dt><dd>${Math.round(c.white / 60000)}${c.white !== c.black ? ` | ${Math.round(c.black / 60000)}` : ""} min + ${Math.round(c.increment / 1000)} s</dd>
       <dt>Start</dt><dd>${m.scheduled_at ? formatDateTime(m.scheduled_at) : "Not scheduled"}</dd>
       ${m.status === "completed" ? `<dt>Result</dt><dd>${resultText(m)}</dd>` : ""}
-      ${m.white_rating_delta != null ? `<dt>Rating change</dt><dd>${delta(m.white_rating_delta)} / ${delta(m.black_rating_delta)}</dd>` : ""}
     </dl>
     ${S.history.length ? `<div class="row gap-2 mt-4"><button class="btn btn-sm" data-act-local="copy-pgn">${icon("copy")} Copy PGN</button><button class="btn btn-sm" data-act-local="download-pgn">${icon("download-simple")} Download</button></div>` : ""}
     <h3>Rules of play</h3>
@@ -836,10 +833,6 @@ function renderInfo() {
       <li>${icon("check-circle", "fill")}<span>Knockout games can't end level: a drawn game is followed by an Armageddon game (White 5 min, Black 4 min, +2 s). Black goes through on a draw.</span></li>
       <li>${icon("check-circle", "fill")}<span>No engines, books or help during play. Leaving the game tab is logged for the arbiter.</span></li>
     </ul>`;
-}
-
-function delta(v) {
-  return v == null ? "-" : v > 0 ? `+${v}` : String(v);
 }
 
 // ---------------------------------------------------------------- commentary
@@ -1234,7 +1227,7 @@ function adjudicateModal(result) {
   const label = result === "1/2-1/2" ? "a draw" : result === "1-0" ? `a win for ${nameOf(S.match.white_id)} (White)` : `a win for ${nameOf(S.match.black_id)} (Black)`;
   const d = openModal(
     "Adjudicate the game",
-    `<form class="stack gap-4"><p class="muted">End the game now as ${esc(label)}. Ratings, standings and the bracket update automatically.</p>
+    `<form class="stack gap-4"><p class="muted">End the game now as ${esc(label)}. Standings and the bracket update automatically.</p>
       <div class="field"><label for="adj-reason">Reason</label><input class="input" id="adj-reason" name="reason" maxlength="80" value="arbiter decision"></div>
       <div class="modal-actions"><button class="btn" type="button" data-close>Cancel</button><button class="btn btn-primary" type="submit">${icon("gavel", "bold")} End the game</button></div></form>`,
   );
@@ -1316,8 +1309,7 @@ function showResult() {
   const oddsNote = m.draw_odds && m.result === "1/2-1/2" ? "<p class=\"small muted mt-2\">Armageddon: Black goes through on a draw.</p>" : "";
   const side = (colour) => {
     const id = colour === "white" ? m.white_id : m.black_id;
-    const d = colour === "white" ? m.white_rating_delta : m.black_rating_delta;
-    return `<div class="p${winnerColour === colour ? " won" : ""}"><div class="avatar ${colour}" style="width:3.4rem;height:3.4rem;font-size:1.2rem">${esc(initials(nameOf(id)))}</div><span class="n">${esc(nameOf(id))}</span>${d != null ? `<span class="delta ${d > 0 ? "up" : d < 0 ? "down" : ""}">${store.profileById.get(id)?.rating ?? ""} (${delta(d)})</span>` : ""}</div>`;
+    return `<div class="p${winnerColour === colour ? " won" : ""}"><div class="avatar ${colour}" style="width:3.4rem;height:3.4rem;font-size:1.2rem">${esc(initials(nameOf(id)))}</div><span class="n">${esc(nameOf(id))}</span></div>`;
   };
   const knockoutDraw = isKnockout(m) && !m.tiebreak_of && m.result === "1/2-1/2" && !m.winner_id;
   const tb = tiebreakOf();
@@ -1392,8 +1384,6 @@ function pgnText() {
     White: nameOf(m.white_id),
     Black: nameOf(m.black_id),
     Result: m.result ?? "*",
-    WhiteElo: store.profileById.get(m.white_id)?.rating ?? "",
-    BlackElo: store.profileById.get(m.black_id)?.rating ?? "",
     TimeControl: `${Math.round(c.white / 1000)}+${Math.round(c.increment / 1000)}`,
     Termination: m.end_reason ?? "",
   };

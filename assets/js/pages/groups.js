@@ -1,4 +1,4 @@
-import { store, tournamentUnrated } from "../store.js";
+import { store } from "../store.js";
 import { TIEBREAK_NOTE } from "../standings.js";
 import { emptyState, groupTableHtml } from "../ui.js";
 import { startPage } from "../page.js";
@@ -12,7 +12,7 @@ function hero() {
     eyebrow: "Group stage",
     bold: "Eight groups.",
     soft: "Top two go through.",
-    lede: `Eight groups of four, everyone plays everyone once. ${TIEBREAK_NOTE}${tournamentUnrated() ? " This is an unrated tournament: results count for the tables, the bracket and the title, but ratings don't change." : ""}`,
+    lede: `Eight groups of four, everyone plays everyone once. ${TIEBREAK_NOTE}`,
     stats: [
       { value: store.groups.length || 8, label: "Groups" },
       { value: store.groupPlayers.length, label: "Players drawn" },

@@ -45,17 +45,17 @@ function shuffle(items) {
   return a;
 }
 
-// World Cup style: rank by rating into four pots of eight, then each group
-// gets one player from every pot, so the strongest are spread out.
-export async function seededDraw(tournamentId, groups, players) {
+// The draw: the 32 players are shuffled and dealt into the eight groups,
+// four to a group. The seat (1 to 4) fixes who plays whom in each round.
+export async function randomDraw(tournamentId, groups, players) {
   if (players.length !== 32) throw new Error(`Pick exactly 32 players (you picked ${players.length}).`);
   if (groups.length !== 8) throw new Error("This edition needs its 8 groups first.");
-  const ranked = players.slice().sort((a, b) => b.rating - a.rating);
+  const dealt = shuffle(players);
   const ordered = groups.slice().sort((a, b) => a.label.localeCompare(b.label));
   const rows = [];
-  for (let pot = 0; pot < 4; pot++) {
-    shuffle(ranked.slice(pot * 8, pot * 8 + 8)).forEach((p, i) =>
-      rows.push({ tournament_id: tournamentId, group_id: ordered[i].id, player_id: p.id, seed: pot + 1 }),
+  for (let seat = 0; seat < 4; seat++) {
+    dealt.slice(seat * 8, seat * 8 + 8).forEach((p, i) =>
+      rows.push({ tournament_id: tournamentId, group_id: ordered[i].id, player_id: p.id, seed: seat + 1 }),
     );
   }
   check(await supabase.from("group_players").delete().eq("tournament_id", tournamentId));
@@ -97,16 +97,10 @@ export async function scheduleRound(matches, when) {
   if (ids.length) check(await supabase.from("matches").update({ scheduled_at: when }).in("id", ids));
 }
 
-// Rated or unrated tournament: the edition and all its group and bracket
-// games at once. Finished games gain or lose their rating change.
-export async function setTournamentRated(tournamentId, rated) {
-  check(await supabase.rpc("set_tournament_rated", { p_tournament: tournamentId, p_rated: rated }));
-}
-
 // A friendly match outside the groups and the bracket, with its own clock.
 // It's created first and then given its start time, so both players get
 // the "game scheduled" update the database sends.
-export async function createFriendly({ tournamentId, whiteId, blackId, when, minutes, increment, rated }) {
+export async function createFriendly({ tournamentId, whiteId, blackId, when, minutes, increment }) {
   const base = Math.round(minutes * 60_000);
   const m = check(
     await supabase
@@ -119,7 +113,6 @@ export async function createFriendly({ tournamentId, whiteId, blackId, when, min
         white_base_ms: base,
         black_base_ms: base,
         increment_ms: Math.round(increment * 1000),
-        rated,
       })
       .select("*")
       .single(),
@@ -127,7 +120,6 @@ export async function createFriendly({ tournamentId, whiteId, blackId, when, min
   return updateMatch(m.id, { scheduled_at: when });
 }
 
-// Deleting a finished game undoes its rating change (migration 0003).
 export async function deleteMatch(id) {
   check(await supabase.from("matches").delete().eq("id", id));
 }
@@ -136,8 +128,7 @@ export async function updateMatch(id, patch) {
   return check(await supabase.from("matches").update(patch).eq("id", id).select("*").single());
 }
 
-// Puts a game back to its starting position. The database reverses any
-// rating change the game had caused.
+// Puts a game back to its starting position.
 export async function resetGame(id) {
   // An Armageddon game made for this one no longer applies.
   check(await supabase.from("matches").delete().eq("tiebreak_of", id));
@@ -195,7 +186,7 @@ export async function generateKnockout(tournamentId) {
 const hasBot = (m, profileById) => profileById.get(m.white_id)?.is_bot || profileById.get(m.black_id)?.is_bot;
 
 // Gives every unfinished game with a bot in it (and, if asked, games
-// between real players) a result, the way ratings predict. The database
+// between real players) a random result. The database
 // then does what it would after real games: standings, Armageddon
 // tiebreaks, the bracket and advancement. Runs again for each new round
 // until nothing is left to play.
@@ -206,12 +197,9 @@ export async function simulateGames(tournamentId, profileById, { includeReal = f
     const todo = games.filter((m) => m.white_id && m.black_id && (includeReal || hasBot(m, profileById)));
     if (!todo.length) break;
     for (const m of todo) {
-      const w = profileById.get(m.white_id)?.rating ?? 1000;
-      const b = profileById.get(m.black_id)?.rating ?? 1000;
-      const expected = 1 / (1 + 10 ** ((b - w) / 400));
       const drawChance = m.stage === "group" ? 0.2 : m.tiebreak_of ? 0.1 : 0.15;
       const r = Math.random();
-      const result = r < drawChance ? "1/2-1/2" : Math.random() < expected ? "1-0" : "0-1";
+      const result = r < drawChance ? "1/2-1/2" : Math.random() < 0.5 ? "1-0" : "0-1";
       const when = m.scheduled_at ?? new Date().toISOString();
       await updateMatch(m.id, { scheduled_at: when, started_at: when, status: "completed", result, end_reason: "test simulation" });
       played += 1;
@@ -223,7 +211,7 @@ export async function simulateGames(tournamentId, profileById, { includeReal = f
 }
 
 // Before bots leave: games between real players that were played during
-// testing go back to the start, which also undoes their rating changes.
+// testing go back to the start.
 export async function resetRealTestGames(tournamentId, profileById, { allRealGames = false } = {}) {
   const games = check(await supabase.from("matches").select("*").eq("tournament_id", tournamentId).eq("stage", "group"));
   const real = games.filter((m) => !hasBot(m, profileById) && (m.status !== "scheduled" || m.move_count > 0));

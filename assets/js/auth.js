@@ -11,7 +11,7 @@ export const isStaff = (role) => role === "admin" || role === "moderator";
 
 // Everything about a person that other members may see. Emails are
 // private: only admins get them, through the admin-users function.
-export const PROFILE_COLUMNS = "id, full_name, role, rating, school, created_at, is_bot";
+export const PROFILE_COLUMNS = "id, full_name, role, school, created_at, is_bot";
 
 async function loadProfile(userId) {
   const { data } = await supabase.from("profiles").select(PROFILE_COLUMNS).eq("id", userId).maybeSingle();
@@ -49,7 +49,7 @@ export async function signIn(email, password) {
   const profile = await loadProfile(data.user.id);
   if (!profile) {
     await supabase.auth.signOut();
-    throw new Error("Thanks for registering! The organisers haven't confirmed your place yet. You can sign in once they accept your registration.");
+    throw new Error("This account isn't set up for the portal yet. Ask the organisers.");
   }
   return profile;
 }

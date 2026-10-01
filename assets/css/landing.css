@@ -355,22 +355,6 @@
   .deck__card li { padding: 0.3rem 0.7rem; }
 }
 
-/* ---------------------------------------------------------------- ratings */
-
-.rating-grid { display: grid; gap: 1rem; margin-top: 3.5rem; }
-@media (min-width: 900px) { .rating-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1.4fr); } }
-.rcard { padding: 1.75rem; }
-.rcard .who { font-weight: 800; }
-.rcard .num-big { margin-top: 1.25rem; font-family: var(--font-mono); font-weight: 600; font-size: 3.4rem; line-height: 1; }
-.rcard .delta { margin-top: 0.6rem; font-family: var(--font-mono); font-size: var(--text-sm); }
-.rcard .delta.down { color: var(--signal); }
-.rchart { padding: 1.75rem; display: flex; flex-direction: column; }
-.rchart svg { width: 100%; height: auto; margin-top: auto; overflow: visible; }
-.rchart .grid-line { stroke: rgb(255 255 255 / 0.06); }
-.rchart .line { fill: none; stroke: var(--chrome); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 6px rgb(255 255 255 / 0.4)); }
-.rchart .area { fill: url(#areaFade); }
-.rchart .dot { fill: var(--chrome); }
-
 /* ---------------------------------------------------------------- faq */
 
 .faq { display: grid; gap: 3rem; }

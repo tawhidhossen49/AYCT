@@ -1,4 +1,4 @@
-// The whole active edition is small (32 players, 63 games), so each page
+// The whole active edition is small (32 players, 64 games), so each page
 // loads it once and keeps it live with Supabase Realtime.
 
 import { supabase, callFunction } from "./supabase.js";
@@ -101,7 +101,7 @@ export function subscribe(onChange) {
         return;
       }
       upsertMatch(payload.new);
-      // A finished game changes ratings, so names and ratings reload.
+      // A finished game can move players on in the bracket, so everything reloads.
       if (payload.new.status === "completed" && payload.old?.status !== "completed") reloadSoon();
       else notify();
     })
@@ -129,35 +129,25 @@ export function sortByTime(a, b) {
 
 export const involves = (m, playerId) => m.white_id === playerId || m.black_id === playerId;
 
-export const STAGE_LABEL = { group: "Group stage", r16: "Round of 16", qf: "Quarterfinal", sf: "Semifinal", final: "Final", friendly: "Friendly" };
+export const STAGE_LABEL = { group: "Group stage", r16: "Round of 16", qf: "Quarterfinal", sf: "Semifinal", third: "Third place", final: "Final", friendly: "Friendly" };
 
-export const KNOCKOUT_STAGES = ["r16", "qf", "sf", "final"];
+// 48 group games, then 8 + 4 + 2, the third-place game and the final: 64.
+export const TOTAL_GAMES = 64;
+export const KNOCKOUT_STAGES = ["r16", "qf", "sf", "third", "final"];
 export const isKnockout = (m) => KNOCKOUT_STAGES.includes(m.stage);
 export const isFriendly = (m) => m.stage === "friendly";
-// Only rated games move Elo ratings. Older rows without the flag are rated.
-export const isRated = (m) => m.rated !== false && !m.tiebreak_of;
 
 // The tournament proper: group and bracket games. Armageddon tiebreaks
 // settle drawn knockout games and friendlies are extra, so neither counts.
 export const isTiebreak = (m) => Boolean(m.tiebreak_of);
 export const bracketGames = (matches) => matches.filter((m) => !m.tiebreak_of && !isFriendly(m));
 
-// How the edition counts: "rated", "unrated", or null until staff choose
-// (games are rated until then).
-export function tournamentMode(t = store.tournament) {
-  if (!t) return null;
-  return t.rated === true ? "rated" : t.rated === false ? "unrated" : null;
-}
-export const tournamentUnrated = (t = store.tournament) => t?.rated === false;
-
 export function matchContext(m) {
-  const odd = m.rated === false && !tournamentUnrated() ? " · Unrated" : "";
   if (m.stage === "group") {
     const g = store.groups.find((x) => x.id === m.group_id);
-    return `Group ${g?.label ?? ""} · Round ${m.round}${odd}`;
+    return `Group ${g?.label ?? ""} · Round ${m.round}`;
   }
-  if (isFriendly(m)) return `Friendly · ${isRated(m) ? "Rated" : "Unrated"}`;
-  return m.tiebreak_of ? `${STAGE_LABEL[m.stage]} · Armageddon` : `${STAGE_LABEL[m.stage]}${odd}`;
+  return m.tiebreak_of ? `${STAGE_LABEL[m.stage]} · Armageddon` : STAGE_LABEL[m.stage];
 }
 
 // Starting clocks for a game: its own (Armageddon) or the edition's.
