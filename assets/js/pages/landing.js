@@ -1,7 +1,7 @@
 // Public landing page: preloader, pinned hero, the road to the crown, the
 // ring of groups, a live demo board, the roles deck, and the footer.
 
-import { formLink } from "../registration.js";
+import { FORM_KINDS, formLinks } from "../registration.js";
 import { supabase } from "../supabase.js";
 import { currentProfile } from "../auth.js";
 import { reduced, hasGsap, initSmoothScroll, getLenis, animateIn, navAutoHide, progressRing, cursorDot } from "../motion.js";
@@ -16,7 +16,7 @@ const motion = hasGsap && !reduced;
 
 // ---------------------------------------------------------------- data
 
-// The current edition's year and registration form link are public.
+// The current edition's year and registration form links are public.
 const edition = supabase
   .from("tournaments")
   .select("year, registration")
@@ -29,9 +29,10 @@ edition.then((data) => {
   if (data?.year) document.querySelectorAll("[data-year]").forEach((el) => (el.textContent = data.year));
 });
 
-// "Register now" opens the organisers' Google Form. Until they add its link
-// the buttons say "Registration coming soon" and go nowhere. Members who are
-// already in get "Open portal" instead.
+// "Register now" asks what the visitor wants to register for (player,
+// campus ambassador, partnership, organising team) and opens that Google
+// Form. Until the organisers add a link the buttons say "Registration coming
+// soon" and go nowhere. Members who are already in get "Open portal" instead.
 Promise.all([edition, currentProfile()]).then(([data, profile]) => {
   const arrow = `<i class="ph-bold ph-arrow-right"></i>`;
   if (profile) {
@@ -46,14 +47,19 @@ Promise.all([edition, currentProfile()]).then(([data, profile]) => {
     });
     return;
   }
-  const link = formLink(data?.registration?.form_url);
+  const links = formLinks(data?.registration);
+  const open = Object.values(links).some(Boolean);
+  const ask = (e) => {
+    e.preventDefault();
+    registerChooser(links);
+  };
   document.querySelectorAll("[data-register-link]").forEach((a) => {
-    if (link) {
-      a.href = link;
-      a.target = "_blank";
-      a.rel = "noopener";
+    if (open) {
+      a.href = "#register";
+      a.setAttribute("aria-haspopup", "dialog");
       a.removeAttribute("aria-disabled");
       a.innerHTML = `Register now ${arrow}`;
+      a.addEventListener("click", ask);
     } else {
       a.removeAttribute("href");
       a.setAttribute("aria-disabled", "true");
@@ -61,11 +67,39 @@ Promise.all([edition, currentProfile()]).then(([data, profile]) => {
     }
   });
   const foot = document.querySelector("[data-register-foot]");
-  if (foot && link) {
+  if (foot && open) {
     foot.hidden = false;
-    foot.querySelector("a").href = link;
+    foot.querySelector("a").href = "#register";
+    foot.querySelector("a").addEventListener("click", ask);
   }
 });
+
+// The four things people can register for. Each opens its form in a new
+// tab; one without a link yet is shown as coming soon.
+function registerChooser(links) {
+  const d = document.createElement("dialog");
+  d.className = "modal wide reg-chooser";
+  d.setAttribute("aria-labelledby", "reg-chooser-title");
+  const options = FORM_KINDS.map((k) => {
+    const inner = `<span class="reg-option-icon"><i class="ph-bold ph-${k.icon}" aria-hidden="true"></i></span>
+      <span class="reg-option-text"><strong>${k.label}</strong><span>${k.blurb}</span></span>`;
+    return links[k.key]
+      ? `<a class="reg-option" href="${links[k.key]}" target="_blank" rel="noopener" data-kind="${k.key}">${inner}<i class="ph-bold ph-arrow-up-right reg-option-go" aria-hidden="true"></i></a>`
+      : `<div class="reg-option soon" data-kind="${k.key}" aria-disabled="true">${inner}<span class="reg-option-go">Coming soon</span></div>`;
+  }).join("");
+  d.innerHTML = `<div class="modal-head"><h2 id="reg-chooser-title">Register now</h2><button class="icon-btn" data-close aria-label="Close"><i class="ph ph-x" aria-hidden="true"></i></button></div>
+    <div class="modal-body">
+      <p class="muted">What would you like to register for?</p>
+      <div class="reg-options">${options}</div>
+      <p class="xs dim reg-chooser-note">Each choice opens a Google Form in a new tab.</p>
+    </div>`;
+  document.body.append(d);
+  d.addEventListener("click", (e) => {
+    if (e.target === d || e.target.closest("[data-close], a.reg-option")) d.close();
+  });
+  d.addEventListener("close", () => d.remove());
+  d.showModal();
+}
 
 // ---------------------------------------------------------------- static pieces (built for every visitor)
 

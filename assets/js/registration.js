@@ -1,6 +1,15 @@
-// Registration happens in a Google Form. Its link is saved on the edition
-// (tournaments.registration.form_url) by an admin in the Control Room, and
-// the main page's "Register now" buttons open it.
+// Registration happens in Google Forms. "Register now" on the main page asks
+// what the visitor wants to register for, then opens that form. The links
+// are saved on the edition (tournaments.registration.forms) by an admin in
+// the Control Room.
+
+// What people can register for, in the order they are shown.
+export const FORM_KINDS = [
+  { key: "player", label: "Player registration", blurb: "Play in the tournament: 32 players, 8 groups, one champion.", icon: "crown-simple" },
+  { key: "ca", label: "Campus Ambassador (CA)", blurb: "Represent AYCT at your school, college or university.", icon: "megaphone" },
+  { key: "partner", label: "Club or organisation partnership", blurb: "Partner your club or organisation with the tournament.", icon: "handshake" },
+  { key: "organiser", label: "Join the organising team", blurb: "Help run AYCT as one of the organisers.", icon: "users-three" },
+];
 
 // The link if it really is a Google Form, otherwise null.
 export function formLink(value) {
@@ -11,4 +20,11 @@ export function formLink(value) {
   } catch {
     return null;
   }
+}
+
+// Each kind's link (or null) for an edition. An edition saved before there
+// were four forms has one link, which was the players' form.
+export function formLinks(registration) {
+  const saved = registration?.forms ?? {};
+  return Object.fromEntries(FORM_KINDS.map((k) => [k.key, formLink(saved[k.key] ?? (k.key === "player" ? registration?.form_url : null))]));
 }

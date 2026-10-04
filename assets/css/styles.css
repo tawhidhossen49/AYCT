@@ -1528,3 +1528,5 @@ a.ctl-board { pointer-events: auto; display: block; }
 
 /* A button that leads nowhere yet, such as "Registration coming soon". */
 .btn[aria-disabled="true"] { cursor: default; opacity: 0.72; }
+
+.reg-form-row label { display: flex; align-items: center; gap: 0.4rem; }

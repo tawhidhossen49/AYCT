@@ -67,7 +67,7 @@ assets/js/store.js          Loads the tournament and keeps it live
 assets/js/ops.js            Staff actions: draw, fixtures, scheduling, bracket
 assets/js/standings.js      Group tables and tiebreaks
 assets/js/time.js           Server-synced clock, countdowns
-assets/js/registration.js   Checks the Google Form link used by "Register now"
+assets/js/registration.js   The Google Forms behind "Register now"
 assets/js/board.js          Chessboard (chessground) and rules (chess.js)
 assets/js/ui.js             Header, match rows, group tables, dialogs
 assets/js/page.js           What every page does first
@@ -123,13 +123,16 @@ is logged for the arbiter (Control Room, Live and Activity).
 
 ## Registration
 
-Players register in a Google Form, not on the site.
+People register in Google Forms, not on the site. There are four forms:
+player registration, Campus Ambassador (CA), club or organisation
+partnership, and joining the organising team.
 
-- Control Room, Registrations (admins only): paste the Google Form link
-  and save. "Register now" on the main page then opens the form in a new
-  tab.
-- While there is no link, the main page buttons say "Registration coming
-  soon" and go nowhere. Remove the link to close registration.
+- "Register now" on the main page asks what the visitor wants to register
+  for, then opens that form in a new tab.
+- Control Room, Registrations (admins only): paste each form's link and
+  save. A form with no link is shown as "Coming soon" in the chooser.
+- With no links at all, the main page buttons say "Registration coming
+  soon" and go nowhere.
 - Answers stay in Google Forms. Once a player is confirmed, an admin
   creates their account in Control Room, People and sends them their
   sign-in.

@@ -8,7 +8,7 @@ import { callFunction, supabase } from "../supabase.js";
 import { store, loadAll, loadEmails, subscribe, sortByTime, STAGE_LABEL, effectiveStatus, matchContext, baseClocks, bracketGames, isKnockout, isFriendly } from "../store.js";
 import { formatClock, formatDateTime, formatTime, fromLocalInput, serverNow, toLocalInput } from "../time.js";
 import { TIEBREAK_NOTE } from "../standings.js";
-import { formLink } from "../registration.js";
+import { FORM_KINDS, formLink, formLinks } from "../registration.js";
 import {
   clearGroups, createTournament, generateGroupFixtures, generateKnockout, qualifiers, R16_PAIRINGS,
   createFriendly, deleteMatch, resetGame, randomDraw, resetRealTestGames, scheduleRound, sendMessage, simulateGames, setActiveTournament, setGroupSlot, updateMatch, updateTournament,
@@ -58,7 +58,7 @@ const ui = {
   chatDraft: "",
   // Registrations tab
   regMsg: "",
-  regDraft: null,
+  regDraft: {},
   regErr: "",
 };
 const watch = {
@@ -114,7 +114,7 @@ function currentTab() {
   return visibleTabs().some((t) => t.id === id) ? id : store.tournament ? "live" : "tournament";
 }
 
-// The registration form link is set by admins.
+// The registration form links are set by admins.
 function visibleTabs() {
   return TABS.filter((t) => !t.admin || profile.role === "admin");
 }
@@ -628,34 +628,41 @@ function groupsTab() {
 
 // ---------------------------------------------------------------- registrations tab (admins)
 
-// Players register in a Google Form. Its link is saved on the edition: the
-// main page's "Register now" buttons open it, and say "Registration coming
-// soon" while there is no link.
+// People register in Google Forms: one each for players, campus
+// ambassadors, partners and organisers. The links are saved on the edition.
+// "Register now" on the main page asks which one the visitor wants, and
+// says "Registration coming soon" while there are no links at all.
 function registrationsTab() {
-  if (!store.tournament) return emptyState("No edition yet", "Create the tournament first, then add its registration form here.");
-  const link = formLink(store.tournament.registration?.form_url);
+  if (!store.tournament) return emptyState("No edition yet", "Create the tournament first, then add its registration forms here.");
+  const links = formLinks(store.tournament.registration);
+  const open = FORM_KINDS.filter((k) => links[k.key]).length;
+  const rows = FORM_KINDS.map((k) => {
+    const link = links[k.key];
+    return `<div class="field reg-form-row">
+      <label for="reg-url-${k.key}">${icon(k.icon, "bold")} ${esc(k.label)}</label>
+      <div class="row gap-2">
+        <input class="input grow" id="reg-url-${k.key}" name="${k.key}" data-reg-url="${k.key}" type="url" inputmode="url" autocomplete="off" placeholder="https://forms.gle/..." value="${esc(ui.regDraft[k.key] ?? link ?? "")}">
+        ${link ? `<a class="btn" href="${esc(link)}" target="_blank" rel="noopener" aria-label="Open the ${esc(k.label)} form" title="Open the form">${icon("arrow-square-out")}</a>` : ""}
+      </div>
+      <p class="hint">${link ? "On the main page now." : "No link: shown as \"Coming soon\" on the main page."}</p>
+    </div>`;
+  }).join("");
   return `<div class="stack gap-8">
     <section class="panel pad stack gap-4">
       <div class="split">
         <div>
-          <h2 class="section-title">${icon("clipboard-text", "bold")} Registration form</h2>
-          <p class="small muted mt-1" style="max-width:66ch">Players register in a Google Form. Paste its link here and "Register now" on the main page opens it. While there is no link, the main page says "Registration coming soon".</p>
+          <h2 class="section-title">${icon("clipboard-text", "bold")} Registration forms</h2>
+          <p class="small muted mt-1" style="max-width:66ch">"Register now" on the main page asks visitors what they want to register for, then opens that Google Form. Paste each form's link here. To close one, empty its box and save.</p>
         </div>
-        <span class="badge">Main page now: ${link ? "Register now" : "Registration coming soon"}</span>
+        <span class="badge">Main page now: ${open ? `Register now, ${open} of ${FORM_KINDS.length} forms open` : "Registration coming soon"}</span>
       </div>
       <form class="stack gap-4" data-form="reg-link">
-        <div class="field">
-          <label for="reg-url">Google Form link</label>
-          <input class="input" id="reg-url" name="url" type="url" inputmode="url" autocomplete="off" placeholder="https://forms.gle/..." value="${esc(ui.regDraft ?? link ?? "")}">
-          <p class="hint">In Google Forms press Send, choose the link icon and copy the link. It starts with https://forms.gle/ or https://docs.google.com/forms/.</p>
-        </div>
+        ${rows}
+        <p class="hint">In Google Forms press Send, choose the link icon and copy the link. It starts with https://forms.gle/ or https://docs.google.com/forms/.</p>
         <div data-err>${ui.regErr ? notice(esc(ui.regErr), "error") : ""}</div>
         <div class="row gap-2 wrap">
-          <button class="btn btn-primary" type="submit">${icon("floppy-disk", "bold")} Save link</button>
-          ${link
-            ? `<a class="btn" href="${esc(link)}" target="_blank" rel="noopener">${icon("arrow-square-out")} Open the form</a>
-               <button class="btn btn-ghost" type="button" data-action="reg-remove">${icon("trash")} Remove link</button>`
-            : ""}
+          <button class="btn btn-primary" type="submit">${icon("floppy-disk", "bold")} Save links</button>
+          <a class="btn" href="index.html" target="_blank" rel="noopener">${icon("eye")} See the main page</a>
           <span data-msg class="small muted">${esc(ui.regMsg)}</span>
         </div>
       </form>
@@ -663,34 +670,34 @@ function registrationsTab() {
     <section class="panel pad">
       <h2 class="section-title">${icon("list-numbers", "bold")} How registration works</h2>
       <ol class="small muted mt-4 stack gap-2" style="padding-left:1.2rem;list-style:decimal;max-width:70ch">
-        <li>Make the form in Google Forms. Ask for what you need: full name, email, school and phone number.</li>
-        <li>Paste its link above and save. "Register now" on the main page starts opening the form straight away.</li>
+        <li>Make each form in Google Forms and paste its link above.</li>
+        <li>Visitors press "Register now", choose what they are registering for, and the form opens in a new tab.</li>
         <li>Answers arrive in Google Forms (and its spreadsheet), not here. When you have confirmed a player, create their account on the <a href="#people" style="text-decoration:underline">People</a> tab and send them their sign-in.</li>
-        <li>To close registration, remove the link, or stop accepting responses in Google Forms.</li>
+        <li>With no links at all, the main page says "Registration coming soon".</li>
       </ol>
     </section>
   </div>`;
 }
 
-async function saveFormLink(value, button) {
-  const raw = String(value ?? "").trim();
-  const link = formLink(raw);
+async function saveFormLinks(form) {
+  const forms = {};
+  const bad = [];
+  for (const k of FORM_KINDS) {
+    const raw = form[k.key].value.trim();
+    forms[k.key] = formLink(raw);
+    if (raw && !forms[k.key]) bad.push(k.label);
+  }
   // Kept in the view state, so a live redraw doesn't wipe the message.
-  ui.regErr = raw && !link ? "That doesn't look like a Google Form link. It should start with https://forms.gle/ or https://docs.google.com/forms/." : "";
+  ui.regErr = bad.length ? `${bad.join(", ")}: that doesn't look like a Google Form link. It should start with https://forms.gle/ or https://docs.google.com/forms/.` : "";
   if (ui.regErr) return draw();
-  await withBusy(button, async () => {
-    await updateTournament(store.tournament.id, { registration: { form_url: link } });
-    ui.regMsg = link ? `Saved. "Register now" opens this form.` : `Link removed. The main page says "Registration coming soon".`;
-    ui.regDraft = null;
+  await withBusy(form.querySelector("[type=submit]"), async () => {
+    await updateTournament(store.tournament.id, { registration: { forms } });
+    const open = Object.values(forms).filter(Boolean).length;
+    ui.regMsg = open ? `Saved. ${open} of ${FORM_KINDS.length} forms are open on the main page.` : `Saved. The main page says "Registration coming soon".`;
+    ui.regDraft = {};
     await refresh();
     ui.regMsg = "";
   }, app.querySelector("[data-err]"));
-}
-
-function registrationAction(el) {
-  if (el.dataset.action !== "reg-remove") return;
-  if (!confirm(`Remove the form link? The main page will say "Registration coming soon".`)) return;
-  return saveFormLink("", el);
 }
 
 // ---------------------------------------------------------------- testing with bots
@@ -1364,7 +1371,7 @@ function teamArbiters() {
 // The usual jobs for one edition, in order.
 function standardChecklist() {
   return [
-    ["Open registration and share the link", "Registrations tab: paste the Google Form link."],
+    ["Open registration and share the link", "Registrations tab: paste the Google Form links."],
     ["Review registrations and add the 32 players", "Check the Google Form answers, then create the accounts on the People tab."],
     ["Run the group draw", "Groups tab: a random draw deals the players into groups A to H."],
     ["Generate the group fixtures and schedule the rounds", "Matches tab. 48 games over three rounds."],
@@ -1538,7 +1545,6 @@ async function sendTeamMessage(form) {
 app.addEventListener("click", async (e) => {
   const el = e.target.closest("[data-action]");
   if (!el) return;
-  if (el.dataset.action.startsWith("reg-")) return registrationAction(el);
   if (el.dataset.action.startsWith("team-")) return teamAction(el);
   const err = app.querySelector("[data-err]");
   const t = store.tournament;
@@ -1670,7 +1676,7 @@ app.addEventListener("change", async (e) => {
 
 app.addEventListener("input", (e) => {
   if (e.target.dataset.input === "team-chat") ui.chatDraft = e.target.value;
-  if (e.target.id === "reg-url") ui.regDraft = e.target.value;
+  if (e.target.dataset.regUrl) ui.regDraft[e.target.dataset.regUrl] = e.target.value;
   if (e.target.dataset.input !== "search") return;
   ui.query = e.target.value;
   const pos = e.target.selectionStart;
@@ -1684,7 +1690,7 @@ app.addEventListener("submit", async (e) => {
   const link = e.target.closest("[data-form=reg-link]");
   if (link) {
     e.preventDefault();
-    return saveFormLink(link.url.value, link.querySelector("[type=submit]"));
+    return saveFormLinks(link);
   }
   const chat = e.target.closest("[data-form=team-chat]");
   if (chat) {
