@@ -20,6 +20,10 @@ export function createSequence({ canvas, manifest, baseUrl, onProgress }) {
   const isMobile = window.matchMedia("(max-width: 768px)").matches && manifest.mobile;
   const set = isMobile ? manifest.mobile : manifest.desktop;
   const count = manifest.frameCount;
+  // Phones keep every second frame: half the download and half the decoded
+  // images in memory, and at phone size the film looks the same.
+  const step = isMobile ? 2 : 1;
+  const wanted = (i) => i % step === 0 || i === count - 1;
   const url = (i) => `${baseUrl}${set.dir}/${String(i + 1).padStart(4, "0")}.${set.ext}`;
 
   const ctx = canvas.getContext("2d", { alpha: false });
@@ -54,7 +58,7 @@ export function createSequence({ canvas, manifest, baseUrl, onProgress }) {
   }
 
   function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2);
     canvas.width = Math.round(canvas.clientWidth * dpr);
     canvas.height = Math.round(canvas.clientHeight * dpr);
     ctx.imageSmoothingQuality = "high";
@@ -63,7 +67,7 @@ export function createSequence({ canvas, manifest, baseUrl, onProgress }) {
 
   function load(i) {
     return new Promise((res) => {
-      if (images[i]) return res();
+      if (images[i] || !wanted(i)) return res();
       const img = new Image();
       img.decoding = "async";
       img.onload = img.onerror = () => {

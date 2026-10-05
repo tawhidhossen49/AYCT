@@ -546,7 +546,8 @@ function tickClocks() {
     el.classList.toggle("active", active);
     el.classList.toggle("low", st !== "completed" && ms < 20_000);
     el.classList.toggle("paused", paused());
-    el.lastElementChild.textContent = formatClock(ms);
+    const text = formatClock(ms);
+    if (el.lastElementChild.textContent !== text) el.lastElementChild.textContent = text;
   }
 
   const mine = myColour();

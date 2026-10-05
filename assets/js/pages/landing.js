@@ -4,7 +4,7 @@
 import { FORM_KINDS, formLinks } from "../registration.js";
 import { supabase } from "../supabase.js";
 import { currentProfile } from "../auth.js";
-import { reduced, hasGsap, initSmoothScroll, getLenis, animateIn, navAutoHide, progressRing, cursorDot } from "../motion.js";
+import { reduced, hasGsap, lite, initSmoothScroll, getLenis, animateIn, navAutoHide, progressRing, cursorDot } from "../motion.js";
 import { Chessground, Chess } from "../board.js";
 import { loadManifest, createSequence } from "../sequence.js";
 
@@ -13,6 +13,9 @@ const { gsap, ScrollTrigger, SplitText } = window;
 // Morphy vs Duke Karl of Brunswick & Count Isouard, Paris 1858.
 const OPERA = "e4 e5 Nf3 d6 d4 Bg4 dxe5 Bxf3 Qxf3 dxe5 Bc4 Nf6 Qb3 Qe7 Nc3 c6 Bg5 b5 Nxb5 cxb5 Bxb5+ Nbd7 O-O-O Rd8 Rxd7 Rxd7 Rd1 Qe6 Bxd7+ Nxd7 Qb8+ Nxb8 Rd8#".split(" ");
 const motion = hasGsap && !reduced;
+// Animated blur is the costliest effect on a phone; there the text only
+// fades and slides.
+const blur = (px) => (lite ? {} : { filter: `blur(${px}px)` });
 
 // ---------------------------------------------------------------- data
 
@@ -246,23 +249,23 @@ function hero(seq) {
   else tl.to({}, { duration: 1 }, 0);
 
   // Opening title lifts away as the camera starts to move.
-  tl.to(".hv__intro", { autoAlpha: 0, y: -60, filter: "blur(10px)", duration: 0.1, ease: "power2.in" }, 0.1);
+  tl.to(".hv__intro", { autoAlpha: 0, y: -60, ...blur(10), duration: 0.1, ease: "power2.in" }, 0.1);
 
   // "Think." on the left, then "Play." on the right, each in the side of the
   // frame the pieces have just left.
   const chapter = (sel, dir, inAt, outAt) => {
     const away = mobile ? { y: 30 } : { x: 70 * dir };
     const leave = mobile ? { y: -24 } : { x: -30 * dir };
-    tl.fromTo(sel, { autoAlpha: 0, filter: "blur(14px)", ...away }, { autoAlpha: 1, x: 0, y: 0, filter: "blur(0px)", duration: 0.07, ease: "power3.out" }, inAt);
-    tl.to(sel, { autoAlpha: 0, filter: "blur(10px)", ...leave, duration: 0.06, ease: "power2.in" }, outAt - 0.06);
+    tl.fromTo(sel, { autoAlpha: 0, ...blur(14), ...away }, { autoAlpha: 1, x: 0, y: 0, ...blur(0), duration: 0.07, ease: "power3.out" }, inAt);
+    tl.to(sel, { autoAlpha: 0, ...blur(10), ...leave, duration: 0.06, ease: "power2.in" }, outAt - 0.06);
   };
   chapter(".hv__chapter--left .hv__chapter-inner", -1, 0.31, 0.5);
   chapter(".hv__chapter--right .hv__chapter-inner", 1, 0.55, 0.75);
 
   // Finale: "Become" and "Legendary." settle either side of the king.
   const flankFrom = (dir) => (mobile ? { y: 24 } : { x: 60 * dir });
-  tl.fromTo(".hv__flank--left .hv__flank-inner", { autoAlpha: 0, filter: "blur(14px)", ...flankFrom(-1) }, { autoAlpha: 1, x: 0, y: 0, filter: "blur(0px)", duration: 0.09, ease: "power3.out" }, 0.8)
-    .fromTo(".hv__flank--right .hv__flank-inner", { autoAlpha: 0, filter: "blur(14px)", ...flankFrom(1) }, { autoAlpha: 1, x: 0, y: 0, filter: "blur(0px)", duration: 0.09, ease: "power3.out" }, 0.85);
+  tl.fromTo(".hv__flank--left .hv__flank-inner", { autoAlpha: 0, ...blur(14), ...flankFrom(-1) }, { autoAlpha: 1, x: 0, y: 0, ...blur(0), duration: 0.09, ease: "power3.out" }, 0.8)
+    .fromTo(".hv__flank--right .hv__flank-inner", { autoAlpha: 0, ...blur(14), ...flankFrom(1) }, { autoAlpha: 1, x: 0, y: 0, ...blur(0), duration: 0.09, ease: "power3.out" }, 0.85);
 
   tl.fromTo(".hv__progress-fill", { scaleX: 0 }, { scaleX: 1, ease: "none", duration: 1 }, 0);
 
@@ -291,7 +294,7 @@ function hero(seq) {
 function heroIntro() {
   gsap.timeline({ defaults: { ease: "expo.out" } })
     .fromTo([".hv__canvas", ".hv__poster"], { scale: 1.08 }, { scale: 1, duration: 2.4 }, 0)
-    .from("[data-intro]", { y: 34, autoAlpha: 0, filter: "blur(12px)", duration: 1.3, stagger: 0.1, clearProps: "filter" }, 0.2)
+    .from("[data-intro]", { y: 34, autoAlpha: 0, ...blur(12), duration: 1.3, stagger: 0.1, clearProps: "filter" }, 0.2)
     .from(".hv__progress", { autoAlpha: 0, duration: 1 }, 0.9);
 }
 
@@ -301,6 +304,7 @@ function ticker() {
   const track = document.querySelector(".ticker__track");
   track.innerHTML += track.innerHTML; // two copies for a seamless loop
   const loop = gsap.to(track, { xPercent: -50, duration: 40, ease: "none", repeat: -1 });
+  if (lite) return;
   // Scrolling faster spins it faster, then it settles.
   ScrollTrigger.create({
     onUpdate: (self) => {
@@ -552,7 +556,7 @@ function stackDeck(gap) {
 // ---------------------------------------------------------------- cta, footer
 
 function ctaAndFooter() {
-  gsap.fromTo("[data-cta-img]", { scale: 1.2, yPercent: 6 }, { scale: 1, yPercent: -4, ease: "none", scrollTrigger: { trigger: ".cta", start: "top bottom", end: "bottom top", scrub: true } });
+  if (!lite) gsap.fromTo("[data-cta-img]", { scale: 1.2, yPercent: 6 }, { scale: 1, yPercent: -4, ease: "none", scrollTrigger: { trigger: ".cta", start: "top bottom", end: "bottom top", scrub: true } });
 
   const word = document.querySelector("[data-footer-word]");
   word.innerHTML = [...word.textContent].map((ch) => `<span>${ch}</span>`).join("");

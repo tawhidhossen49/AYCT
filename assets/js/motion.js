@@ -7,6 +7,9 @@ const { gsap, ScrollTrigger, SplitText, Lenis } = window;
 
 export const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 export const hasGsap = Boolean(gsap && ScrollTrigger);
+// Phones and tablets get the same pages with the costly effects left out:
+// native scrolling, no animated blur, no scroll-linked parallax.
+export const lite = window.matchMedia("(hover: none) and (pointer: coarse), (max-width: 899px)").matches;
 if (hasGsap) gsap.registerPlugin(ScrollTrigger, ...(SplitText ? [SplitText] : []));
 // Phones: the address bar sliding in and out mustn't re-measure pinned scenes.
 if (hasGsap) ScrollTrigger.config({ ignoreMobileResize: true });
@@ -15,6 +18,18 @@ let lenis = null;
 
 // Buttery scrolling for long pages. Anchor links glide instead of jumping.
 export function initSmoothScroll() {
+  // Touch screens scroll smoothly by themselves; a script in between only
+  // adds lag. Anchor links still glide.
+  if (lite) {
+    document.addEventListener("click", (e) => {
+      const id = e.target.closest('a[href^="#"]')?.getAttribute("href");
+      const target = id && id.length > 1 && document.querySelector(id);
+      if (!target) return;
+      e.preventDefault();
+      window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - 20, behavior: reduced ? "auto" : "smooth" });
+    });
+    return null;
+  }
   if (!hasGsap || reduced || !Lenis) return null;
   // Dialogs and inner scrolling lists keep their own native scrolling.
   lenis = new Lenis({
@@ -66,13 +81,12 @@ export function reveals(root = document) {
   root.querySelectorAll("[data-reveal]:not([data-reveal-done])").forEach((el) => {
     el.dataset.revealDone = "1";
     gsap.from(el, {
-      y: 48,
+      y: lite ? 28 : 48,
       autoAlpha: 0,
-      filter: "blur(8px)",
-      duration: 1.2,
+      ...(lite ? {} : { filter: "blur(8px)", clearProps: "filter" }),
+      duration: lite ? 0.9 : 1.2,
       ease: "power3.out",
       delay: parseFloat(el.dataset.delay || 0),
-      clearProps: "filter",
       scrollTrigger: el.dataset.reveal === "load" ? undefined : { trigger: el, start: "top 88%", once: true },
     });
   });
@@ -140,7 +154,20 @@ export function progressRing() {
     const p = max > 0 ? scrollY / max : 0;
     bar.style.strokeDashoffset = String(c * (1 - p));
   };
-  window.addEventListener("scroll", update, { passive: true });
+  // At most one update per frame, however fast the scroll events arrive.
+  let queued = false;
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        update();
+      });
+    },
+    { passive: true },
+  );
   update();
   el.addEventListener("click", () => (lenis ? lenis.scrollTo(0, { duration: 1.6 }) : scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" })));
 }
@@ -191,6 +218,8 @@ export function heroMotion(section, { entrance = true } = {}) {
   const img = section.querySelector(".p-hero__media img");
   const inner = section.querySelector(".p-hero__inner");
   if (entrance) gsap.fromTo(img, { scale: 1.2, autoAlpha: 0 }, { scale: 1.08, autoAlpha: 1, duration: 2.2, ease: "expo.out" });
+  // The parallax repaints the whole band on every scroll frame.
+  if (lite) return;
   heroTriggers.push(
     gsap.to(img, { yPercent: 14, ease: "none", scrollTrigger: { trigger: section, start: "top top", end: "bottom top", scrub: true } }).scrollTrigger,
     gsap.to(inner, { y: -60, autoAlpha: 0.2, ease: "none", scrollTrigger: { trigger: section, start: "40% top", end: "bottom top", scrub: true } }).scrollTrigger,
@@ -210,6 +239,7 @@ export function tickerMotion(root = document) {
   root.querySelectorAll(".ticker__track:not([data-ticking])").forEach((track) => {
     track.dataset.ticking = "1";
     const loop = gsap.to(track, { xPercent: -50, duration: 40, ease: "none", repeat: -1 });
+    if (lite) return;
     ScrollTrigger.create({
       onUpdate: (self) => {
         gsap.to(loop, { timeScale: 1 + Math.min(Math.abs(self.getVelocity()) / 600, 5), duration: 0.2, overwrite: true });

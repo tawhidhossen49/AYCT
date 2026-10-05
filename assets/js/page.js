@@ -60,9 +60,22 @@ export async function startPage(active, { staff = false, render, hero, ticker } 
     animateIn(app);
   }
   if (render || hero) {
-    subscribe(() => {
+    // Live games change several times a second. Redraw at most every 0.6 s,
+    // and not at all while the page is in the background.
+    let timer = null;
+    let last = 0;
+    const redraw = () => {
+      timer = null;
+      if (document.hidden) return;
+      last = Date.now();
       drawHero(false);
       if (render) draw();
+    };
+    subscribe(() => {
+      if (!timer) timer = setTimeout(redraw, Math.max(0, 600 - (Date.now() - last)));
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && !timer) redraw();
     });
   }
 

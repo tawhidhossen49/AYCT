@@ -361,3 +361,9 @@ body.arena-body::after {
 .side-tabs.many { gap: 0; }
 .side-tabs.many .side-tab { padding-inline: 0.6rem; }
 .side-tabs.many .side-tab i { display: none; }
+
+/* Phones and tablets: smooth first (see the end of styles.css). */
+@media (hover: none) and (pointer: coarse), (max-width: 899px) {
+  body.arena-body::before { filter: none; opacity: 0.1; }
+  .arena-side { background: rgb(14 15 19 / 0.96); box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06); }
+}
