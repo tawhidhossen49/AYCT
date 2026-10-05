@@ -149,9 +149,13 @@ export function progressRing() {
   el.innerHTML = `<svg viewBox="0 0 52 52" aria-hidden="true"><circle class="track" cx="26" cy="26" r="${r}"/><circle class="bar" cx="26" cy="26" r="${r}" stroke-dasharray="${c}" stroke-dashoffset="${c}"/></svg><i class="ph ph-arrow-up"></i>`;
   document.body.append(el);
   const bar = el.querySelector(".bar");
+  let shown = -1;
   const update = () => {
     const max = document.documentElement.scrollHeight - innerHeight;
     const p = max > 0 ? scrollY / max : 0;
+    // Redrawn only when the ring would visibly move (a third of a percent).
+    if (Math.abs(p - shown) < 0.003 && p > 0 && p < 1) return;
+    shown = p;
     bar.style.strokeDashoffset = String(c * (1 - p));
   };
   // At most one update per frame, however fast the scroll events arrive.
@@ -233,13 +237,28 @@ export function footerMotion(footer) {
   gsap.from(letters, { yPercent: 70, autoAlpha: 0, stagger: 0.06, duration: 1.2, ease: "expo.out", scrollTrigger: { trigger: footer, start: "top 85%", once: true } });
 }
 
+// A band's glide, started for one track. On phones the browser's own
+// animation moves it (no script per frame); either way it only runs while
+// the band is on screen. Returns the GSAP tween, or null on phones.
+export function glide(track) {
+  const onScreen = (fn) => new IntersectionObserver(([entry]) => fn(entry.isIntersecting)).observe(track.parentElement ?? track);
+  if (lite) {
+    track.classList.add("is-css");
+    onScreen((visible) => track.classList.toggle("is-paused", !visible));
+    return null;
+  }
+  const loop = gsap.to(track, { xPercent: -50, duration: 40, ease: "none", repeat: -1 });
+  onScreen((visible) => (visible ? loop.play() : loop.pause()));
+  return loop;
+}
+
 // Keeps a ticker band gliding; scrolling speeds it up for a moment.
 export function tickerMotion(root = document) {
   if (!hasGsap || reduced) return;
   root.querySelectorAll(".ticker__track:not([data-ticking])").forEach((track) => {
     track.dataset.ticking = "1";
-    const loop = gsap.to(track, { xPercent: -50, duration: 40, ease: "none", repeat: -1 });
-    if (lite) return;
+    const loop = glide(track);
+    if (!loop) return;
     ScrollTrigger.create({
       onUpdate: (self) => {
         gsap.to(loop, { timeScale: 1 + Math.min(Math.abs(self.getVelocity()) / 600, 5), duration: 0.2, overwrite: true });

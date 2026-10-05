@@ -103,7 +103,7 @@ export function heroHtml({ scene = "king", eyebrow = "", bold, soft = "", lede =
     `<div class="p-stat${s.live ? " live" : ""}"><span class="v"${animate && typeof s.value === "number" ? ` data-count="${s.value}"` : ""}>${esc(s.value)}</span><span class="k">${esc(s.label)}</span></div>`;
   const long = String(bold).length > 14 ? " long" : "";
   return `<section class="p-hero${compact ? " compact" : ""}${long}">
-    <div class="p-hero__media" aria-hidden="true"><img src="assets/brand/scenes/${scene}.webp" alt="" width="1920" height="1080"${shift ? ` style="--shift:${shift}"` : ""}></div>
+    <div class="p-hero__media" aria-hidden="true"><img src="assets/brand/scenes/${scene}.webp" alt="" width="1920" height="1080" decoding="async"${shift ? ` style="--shift:${shift}"` : ""}></div>
     <div class="p-hero__shade" aria-hidden="true"></div>
     <div class="p-hero__inner">
       ${eyebrow ? `<p class="eyebrow"${animate ? ' data-reveal="load"' : ""}>${eyebrow}</p>` : ""}

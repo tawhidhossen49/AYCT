@@ -17,17 +17,27 @@ export async function loadManifest(url) {
 const FIRST_PASS_STRIDE = 16;
 
 export function createSequence({ canvas, manifest, baseUrl, onProgress }) {
-  const isMobile = window.matchMedia("(max-width: 768px)").matches && manifest.mobile;
-  const set = isMobile ? manifest.mobile : manifest.desktop;
+  const phone = window.matchMedia("(max-width: 768px)").matches && Boolean(manifest.mobile);
   const count = manifest.frameCount;
-  // Phones keep every second frame: half the download and half the decoded
-  // images in memory, and at phone size the film looks the same.
-  const step = isMobile ? 2 : 1;
-  const wanted = (i) => i % step === 0 || i === count - 1;
-  const url = (i) => `${baseUrl}${set.dir}/${String(i + 1).padStart(4, "0")}.${set.ext}`;
+
+  // Which frames fit this screen. Phones keep every second frame: half the
+  // download and half the decoded images in memory. An upright phone gets
+  // the "portrait" set, the middle of each frame cut to 9:16 at the size it
+  // is shown, so nothing is decoded only to be cropped away. The picture on
+  // screen is the same; the canvas just holds fewer wasted pixels.
+  function pick() {
+    if (!phone) return { set: manifest.desktop, step: 1, dpr: 2, batch: 64 };
+    const aspect = canvas.clientWidth / Math.max(1, canvas.clientHeight);
+    if (manifest.portrait && aspect <= manifest.portrait.aspect) return { set: manifest.portrait, step: 2, dpr: 1.25, batch: 6 };
+    return { set: manifest.mobile, step: 2, dpr: 1.5, batch: 6 };
+  }
+  let cur = pick();
+  const wanted = (i) => i % cur.step === 0 || i === count - 1;
+  const url = (i) => `${baseUrl}${cur.set.dir}/${String(i + 1).padStart(4, "0")}.${cur.set.ext}`;
 
   const ctx = canvas.getContext("2d", { alpha: false });
-  const images = new Array(count);
+  let images = new Array(count);
+  let generation = 0; // goes up when the screen turns and another set is needed
   const state = { frame: 0 };
   let drawn = null; // the image currently on the canvas
 
@@ -37,14 +47,15 @@ export function createSequence({ canvas, manifest, baseUrl, onProgress }) {
   // preferring earlier frames so the film never jumps ahead.
   function nearest(i) {
     for (let d = 0; d < count; d++) {
-      if (ready(images[i - d])) return images[i - d];
-      if (ready(images[i + d])) return images[i + d];
+      if (wanted(i - d) && ready(images[i - d])) return images[i - d];
+      if (wanted(i + d) && ready(images[i + d])) return images[i + d];
     }
     return null;
   }
 
   function render(force = false) {
-    const img = nearest(Math.min(count - 1, Math.max(0, Math.round(state.frame))));
+    // While another set is still arriving, the last picture stays up.
+    const img = nearest(Math.min(count - 1, Math.max(0, Math.round(state.frame)))) ?? (force ? drawn : null);
     if (!img || (img === drawn && !force)) return;
     drawn = img;
     const cw = canvas.width;
@@ -57,17 +68,10 @@ export function createSequence({ canvas, manifest, baseUrl, onProgress }) {
     ctx.drawImage(img, (cw - w) / 2, (ch - h) / 2, w, h);
   }
 
-  function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2);
-    canvas.width = Math.round(canvas.clientWidth * dpr);
-    canvas.height = Math.round(canvas.clientHeight * dpr);
-    ctx.imageSmoothingQuality = "high";
-    render(true);
-  }
-
   function load(i) {
+    const into = images;
     return new Promise((res) => {
-      if (images[i] || !wanted(i)) return res();
+      if (into[i] || !wanted(i)) return res();
       const img = new Image();
       img.decoding = "async";
       img.onload = img.onerror = () => {
@@ -75,40 +79,80 @@ export function createSequence({ canvas, manifest, baseUrl, onProgress }) {
         else res();
       };
       img.src = url(i);
-      images[i] = img;
+      into[i] = img;
     });
   }
 
   // First frame, then every 16th, then fill in coarse-to-fine, so the film
-  // can be scrubbed early while the rest arrives in the background.
+  // can be scrubbed early while the rest arrives in the background. On a
+  // phone the rest arrives a few frames at a time, so decoding them never
+  // competes with the first scroll.
   let firstPassDone;
   const firstPass = new Promise((r) => (firstPassDone = r));
-  (async () => {
+  async function fill(first) {
+    const gen = generation;
     await load(0);
+    if (gen !== generation) return;
     render(true);
     const firstBatch = [];
     for (let i = 0; i < count; i += FIRST_PASS_STRIDE) firstBatch.push(load(i));
-    let n = 0;
-    firstBatch.forEach((p) => p.then(() => onProgress?.(++n / firstBatch.length)));
+    if (first) {
+      let n = 0;
+      firstBatch.forEach((p) => p.then(() => onProgress?.(++n / firstBatch.length)));
+    }
     await Promise.all(firstBatch);
+    if (gen !== generation) return;
     render(true);
-    firstPassDone();
+    if (first) firstPassDone();
     for (const stride of [8, 4, 2, 1]) {
-      const batch = [];
-      for (let i = 0; i < count; i += stride) batch.push(load(i));
-      await Promise.all(batch);
+      const todo = [];
+      for (let i = 0; i < count; i += stride) if (!images[i] && wanted(i)) todo.push(i);
+      if (!todo.includes(count - 1) && !images[count - 1]) todo.push(count - 1);
+      for (let k = 0; k < todo.length; k += cur.batch) {
+        await Promise.all(todo.slice(k, k + cur.batch).map(load));
+        if (gen !== generation) return;
+      }
       render(true);
     }
-  })();
+  }
+
+  function resize() {
+    const next = pick();
+    if (next.set !== cur.set) {
+      cur = cur.eco ? { ...next, eco: true, step: next.step * 2, dpr: Math.min(next.dpr, 1) } : next;
+      images = new Array(count);
+      generation += 1;
+      fill(false);
+    }
+    const dpr = Math.min(window.devicePixelRatio || 1, cur.dpr);
+    const w = Math.round(canvas.clientWidth * dpr);
+    const h = Math.round(canvas.clientHeight * dpr);
+    // A phone's address bar sliding away fires resize without changing the
+    // canvas; reallocating it then would stutter mid-scroll.
+    if (w === canvas.width && h === canvas.height) return;
+    canvas.width = w;
+    canvas.height = h;
+    ctx.imageSmoothingQuality = "high";
+    render(true);
+  }
 
   window.addEventListener("resize", resize);
   resize();
+  fill(true);
 
   return {
     state,
     count,
     render,
     firstPass,
+    // For a phone that can't keep up: every other frame of what it was
+    // showing, on a smaller canvas. Half the work, the same film.
+    eco() {
+      if (cur.eco) return;
+      cur = { ...cur, eco: true, step: cur.step * 2, dpr: Math.min(cur.dpr, 1) };
+      canvas.width = 0; // so resize() reallocates at the new size
+      resize();
+    },
     // Adds the frame tween spanning timeline time 0 -> 1.
     addTo(tl) {
       tl.fromTo(state, { frame: 0 }, { frame: count - 1, ease: "none", duration: 1, onUpdate: () => render() }, 0);

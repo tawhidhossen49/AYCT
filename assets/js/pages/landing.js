@@ -4,7 +4,7 @@
 import { FORM_KINDS, formLinks } from "../registration.js";
 import { supabase } from "../supabase.js";
 import { currentProfile } from "../auth.js";
-import { reduced, hasGsap, lite, initSmoothScroll, getLenis, animateIn, navAutoHide, progressRing, cursorDot } from "../motion.js";
+import { reduced, hasGsap, lite, initSmoothScroll, getLenis, animateIn, navAutoHide, progressRing, cursorDot, glide } from "../motion.js";
 import { Chessground, Chess } from "../board.js";
 import { loadManifest, createSequence } from "../sequence.js";
 
@@ -138,6 +138,9 @@ if (!motion) {
   }
   await preloader(heroSeq);
   heroCanvas.classList.toggle("is-ready", Boolean(heroSeq));
+  // Once the film has faded in over the still picture, the still is no
+  // longer drawn underneath it on every frame.
+  if (heroSeq) setTimeout(() => document.querySelector(".hv__poster")?.style.setProperty("visibility", "hidden"), 900);
   hero(heroSeq);
   heroIntro();
   ticker();
@@ -278,13 +281,46 @@ function hero(seq) {
   // so fast or jerky scrolling still plays smoothly in both directions.
   const playTo = (p) => gsap.to(tl, { progress: p, duration: 0.9, ease: "power3.out", overwrite: true });
 
+  // A phone that can't keep up with the film gets a lighter version of it:
+  // while the film is being scrolled, 90 frames are timed, and if half of
+  // them took longer than 30 ms (under about 33 a second) the film drops to
+  // every other frame on a smaller canvas. Fast phones never notice.
+  let pace = lite && seq ? { times: [], last: 0, until: 0, on: false } : null;
+  function watchPace() {
+    if (!pace) return;
+    pace.until = performance.now() + 250;
+    if (pace.on) return;
+    pace.on = true;
+    pace.last = 0;
+    const tick = (now) => {
+      if (!pace) return;
+      if (now > pace.until) {
+        pace.on = false;
+        return;
+      }
+      if (pace.last) pace.times.push(now - pace.last);
+      pace.last = now;
+      if (pace.times.length >= 90) {
+        const median = pace.times.sort((a, b) => a - b)[45];
+        if (median > 30) seq.eco();
+        pace = null;
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
   const st = ScrollTrigger.create({
     trigger: ".hv",
     start: "top top",
     end: `+=${mobile ? 240 : 320}%`,
     pin: stage,
     anticipatePin: 1,
-    onUpdate: (self) => playTo(self.progress),
+    onUpdate: (self) => {
+      playTo(self.progress);
+      watchPace();
+    },
   });
   // Opening mid-page (e.g. from a link): show the film where the page is.
   if (st.progress > 0) tl.progress(st.progress);
@@ -303,8 +339,8 @@ function heroIntro() {
 function ticker() {
   const track = document.querySelector(".ticker__track");
   track.innerHTML += track.innerHTML; // two copies for a seamless loop
-  const loop = gsap.to(track, { xPercent: -50, duration: 40, ease: "none", repeat: -1 });
-  if (lite) return;
+  const loop = glide(track);
+  if (!loop) return;
   // Scrolling faster spins it faster, then it settles.
   ScrollTrigger.create({
     onUpdate: (self) => {

@@ -51,8 +51,14 @@ export async function startPage(active, { staff = false, render, hero, ticker } 
     }
   }
 
+  // Most live updates (a move in someone else's game) change nothing on
+  // this page; the page is only rebuilt when what it shows has changed.
+  let lastHtml = null;
   const draw = () => {
-    app.innerHTML = (store.error ? notice(`Couldn't load tournament data: ${esc(store.error)}`, "error") : "") + render(profile);
+    const html = (store.error ? notice(`Couldn't load tournament data: ${esc(store.error)}`, "error") : "") + render(profile);
+    if (html === lastHtml) return;
+    lastHtml = html;
+    app.innerHTML = html;
   };
   if (render) {
     draw();

@@ -125,8 +125,13 @@ if (!matchId) {
 // ================================================================ lobby (no game chosen)
 
 function startLobby() {
+  // Rebuilt only when what it shows has changed.
+  let lastHtml = null;
   const draw = () => {
-    app.innerHTML = lobbyHtml();
+    const html = lobbyHtml();
+    if (html === lastHtml) return;
+    lastHtml = html;
+    app.innerHTML = html;
     mountMiniBoards(app);
   };
   draw();

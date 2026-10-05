@@ -11,3 +11,12 @@
 # Database setup and server code are not part of the website.
 /supabase/*
   X-Robots-Tag: noindex
+
+# Film frames, fonts and pictures rarely change: phones keep them for a week
+# instead of downloading them again on every visit.
+/assets/sequences/*
+  Cache-Control: public, max-age=604800
+/assets/fonts/*
+  Cache-Control: public, max-age=604800
+/assets/brand/*
+  Cache-Control: public, max-age=604800

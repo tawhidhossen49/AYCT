@@ -1549,7 +1549,25 @@ a.ctl-board { pointer-events: auto; display: block; }
   .toast { background: rgb(18 19 24); box-shadow: 0 12px 24px -14px rgb(0 0 0 / 0.9); }
   .p-hero__media img { will-change: auto; }
   .board-overlay { background: rgb(7 7 10 / 0.9); }
+  /* Pulses that used to repaint a shadow on every frame now fade a ready-made
+     one, which the phone's graphics chip does on its own. */
+  .live-dot { position: relative; animation: none; }
+  .clock.active.low { position: relative; animation: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .live-dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: rgb(255 77 77 / 0.6); animation: live-pulse-lite 1.8s var(--ease) infinite; }
+    .clock.active.low::after { content: ""; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none; box-shadow: 0 0 44px -4px rgb(255 77 77 / 0.55); opacity: 0; animation: low-pulse-lite 1s ease-in-out infinite alternate; }
+  }
+  @keyframes live-pulse-lite {
+    from { transform: scale(1); opacity: 1; }
+    to { transform: scale(3.22); opacity: 0; }
+  }
+  @keyframes low-pulse-lite { to { opacity: 1; } }
   @keyframes enter {
     from { opacity: 0; transform: translateY(16px); }
   }
 }
+
+/* A ticker band moved by the browser itself (phones), paused off screen. */
+@keyframes ticker-slide { to { transform: translate3d(-50%, 0, 0); } }
+.ticker__track.is-css { animation: ticker-slide 40s linear infinite; }
+.ticker__track.is-paused { animation-play-state: paused; }

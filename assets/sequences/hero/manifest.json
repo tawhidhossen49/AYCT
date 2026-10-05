@@ -25,6 +25,12 @@
   "possibleCuts": [],
   "sizeMB": {
     "desktop": 5.0,
-    "mobile": 1.9
+    "mobile": 1.9,
+    "portrait": 0.5
+  },
+  "portrait": {
+    "dir": "portrait",
+    "ext": "webp",
+    "aspect": 0.5625
   }
 }

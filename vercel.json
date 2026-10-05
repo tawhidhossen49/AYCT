@@ -32,6 +32,15 @@
           "value": "same-origin"
         }
       ]
+    },
+    {
+      "source": "/assets/(sequences|fonts|brand)/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=604800"
+        }
+      ]
     }
   ]
 }

@@ -59,6 +59,8 @@ admin.html          Control Room (#live, #team, #tournament, #registrations, #pe
 assets/css/styles.css       Design system and portal styling
 assets/css/landing.css      Landing page sections
 assets/css/arena.css        The Arena
+assets/css/icons.css        The icons the site uses (made by tools/build_icons.py)
+assets/fonts/               Icon fonts, trimmed to those icons
 assets/brand/               Logo and chess piece images from the poster
 assets/js/config.js         Supabase project URL and public key
 assets/js/supabase.js       Supabase connection
@@ -221,5 +223,20 @@ To replace the film with a new clip:
    lives in `hero()` in `assets/js/pages/landing.js`.
 
 `Raw-Video/` is the source only; the website uses `assets/sequences/hero/`.
+
+Upright phones use a third set of frames, `assets/sequences/hero/portrait/`:
+the middle of every second frame, cut to 9:16 at the size it is shown. After
+replacing the film, make that set again from the new `desktop/` frames (crop
+the centre to 9:16, resize to 405x720), or remove the `portrait` entry from
+`manifest.json` and phones fall back to the `mobile/` set.
+
+## Icons
+
+Icons are Phosphor 2.1.2. Only the icons the site uses are shipped, as three
+small fonts in `assets/fonts/` and `assets/css/icons.css`. After using an icon
+the site hasn't used before, rebuild them, or it shows as an empty space:
+
+    pip install fonttools brotli
+    python tools/build_icons.py
 
 Design notes live in `BLUEPRINT.md` and `REDESIGN_PLAN.md`.
