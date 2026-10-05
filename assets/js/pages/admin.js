@@ -737,7 +737,8 @@ function testPanel() {
         <button class="btn btn-primary btn-sm" data-action="fill-bots" ${empty ? "" : "disabled"}>${icon("user-plus", "bold")} Fill ${empty} slot${empty === 1 ? "" : "s"}</button></div>
       <div class="step"><span class="num dim xs">02</span><strong>Play</strong><p class="small muted">Generate fixtures and schedule a round on the Matches tab. Bots make their own moves in the Arena whenever someone has their game open, so you can also play against them. Or finish everything at once:</p>
         <label class="row gap-2 xs muted" style="cursor:pointer"><input type="checkbox" id="sim-real" style="accent-color:#d9dce2"> Also finish games between real players</label>
-        <button class="btn btn-sm" data-action="simulate-bots" ${n ? "" : "disabled"}>${icon("lightning", "bold")} Finish ${botGames ? `${botGames} ` : ""}bot games instantly</button></div>
+        <button class="btn btn-sm" data-action="simulate-bots" ${n ? "" : "disabled"}>${icon("lightning", "bold")} Finish the whole tournament instantly</button>
+        <p class="hint">Every unfinished bot game, round after round to the final${botGames ? ` (${botGames} waiting now)` : ""}.</p></div>
       <div class="step"><span class="num dim xs">03</span><strong>Clean up</strong><p class="small muted">Removes all bots, their games, the bracket built with them and the updates about those games.</p>
         <button class="btn btn-danger btn-sm" data-action="remove-bots" ${n ? "" : "disabled"}>${icon("trash", "bold")} Remove all test data</button></div>
     </div>

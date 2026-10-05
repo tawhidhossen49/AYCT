@@ -42,6 +42,25 @@ const REASON = {
   "timeout vs insufficient material": "time against insufficient material",
 };
 
+// How a game ended, as plain text: "by checkmate", "on time". A result the
+// organisers typed in, or a reason an arbiter wrote, is shown as a note.
+function endPhrase(m) {
+  const r = m.end_reason;
+  if (!r) return "";
+  if (r === "timeout") return "on time";
+  if (r === "timeout vs insufficient material") return "out of time, but the opponent can't mate";
+  if (REASON[r]) return `by ${REASON[r]}`;
+  if (r === "result recorded by staff") return "result entered by the organisers";
+  if (r === "test simulation") return "test simulation";
+  if (r === "arbiter decision") return "by arbiter's decision";
+  return `arbiter: ${r}`;
+}
+// "won by checkmate" reads on; a note goes in brackets.
+const endTail = (m) => {
+  const p = endPhrase(m);
+  return !p ? "" : /^(by|on) /.test(p) ? ` ${p}` : ` (${p})`;
+};
+
 // How the arbiter's event log reads.
 const EVENT_TEXT = {
   joined: "opened the game",
@@ -671,7 +690,7 @@ function renderMoves() {
       <button class="mv${ply === i + 1 ? " on" : ""}" data-ply="${i + 1}"><span>${esc(w.san)}${tag(i)}</span>${stamp(i)}</button>
       ${b ? `<button class="mv${ply === i + 2 ? " on" : ""}" data-ply="${i + 2}"><span>${esc(b.san)}${tag(i + 1)}</span>${stamp(i + 1)}</button>` : "<span></span>"}</div>`;
   }
-  const result = m.status === "completed" && m.result ? `<p class="mv-result">${resultText(m)}${m.end_reason ? ` · ${esc(REASON[m.end_reason] ?? m.end_reason)}` : ""}</p>` : "";
+  const result = m.status === "completed" && m.result ? `<p class="mv-result">${resultText(m)}${m.end_reason ? ` · ${esc(endPhrase(m))}` : ""}</p>` : "";
 
   let review = "";
   if (m.status === "completed" && S.history.length) {
@@ -804,7 +823,7 @@ function tiebreakOf() {
 function resultLine() {
   const m = S.match;
   if (!m.result) return "Game over.";
-  const reason = m.end_reason ? ` by ${esc(REASON[m.end_reason] ?? m.end_reason)}` : "";
+  const reason = esc(endTail(m));
   if (m.result === "1/2-1/2") {
     return m.draw_odds ? `Drawn${reason}. Black goes through on draw odds.` : `Drawn${reason}.`;
   }
@@ -1313,7 +1332,7 @@ function showResult() {
   let big;
   if (mine) big = winnerColour ? (winnerColour === mine ? "You won" : "You lost") : "Draw";
   else big = winnerColour ? `${nameOf(winnerColour === "white" ? m.white_id : m.black_id).split(" ")[0]} won` : "Draw";
-  const reason = m.end_reason ? `by ${esc(REASON[m.end_reason] ?? m.end_reason)}` : "";
+  const reason = endPhrase(m);
   const oddsNote = m.draw_odds && m.result === "1/2-1/2" ? "<p class=\"small muted mt-2\">Armageddon: Black goes through on a draw.</p>" : "";
   const side = (colour) => {
     const id = colour === "white" ? m.white_id : m.black_id;

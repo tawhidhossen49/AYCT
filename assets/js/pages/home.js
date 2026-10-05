@@ -20,6 +20,15 @@ const STATUS_LINE = {
   knockout: "Knockout stage. One game, one winner, every round.",
   complete: "The tournament is complete. A champion has been crowned.",
 };
+// The same line, naming the champion once the final has a winner.
+function statusLine(t) {
+  const champ = championProfile();
+  return t.status === "complete" && champ ? `The tournament is complete. ${esc(champ.full_name)} is the champion.` : STATUS_LINE[t.status];
+}
+function championProfile() {
+  const final = store.matches.find((m) => m.stage === "final" && !m.tiebreak_of);
+  return store.tournament?.status === "complete" && final?.winner_id ? store.profileById.get(final.winner_id) : null;
+}
 const STAGE_NAME = { group: "Group stage", r16: "Round of 16", qf: "Quarterfinal", sf: "Semifinal", third: "Third-place game", final: "Final" };
 const STAGE_ORDER = ["group", "r16", "qf", "sf", "third", "final"];
 
@@ -106,12 +115,12 @@ function hero(p) {
       soft: mine ? "tournament." : "at a glance.",
       lede: next
         ? `${mine ? "Your" : "Their"} ${isLive ? "game is live" : "next game"}: ${opp ? `against ${esc(opp.full_name)}` : "opponent to be decided"}${isLive ? "" : `, ${formatDateTime(next.scheduled_at)}`}.`
-        : STATUS_LINE[t.status],
+        : statusLine(t),
       actions: next ? `<a class="btn btn-primary btn-lg" href="play.html?id=${next.id}" data-magnetic>${isLive ? (mine ? "Play now" : "Watch now") : "Enter the Arena"} ${icon("arrow-right", "bold")}</a>` : "",
       stats: [
         { value: rec.games, label: "Games played" },
         { value: `${rec.w}-${rec.d}-${rec.l}`, label: "Won-drawn-lost" },
-        { value: formatPoints(rec.points), label: "Points" },
+        { value: formatPoints(rec.points), label: "Group points" },
       ],
     };
   }
@@ -123,7 +132,7 @@ function hero(p) {
     eyebrow: `Welcome back, ${first}`,
     bold,
     soft,
-    lede: STATUS_LINE[t.status],
+    lede: statusLine(t),
     stats: [
       { value: entrants, label: "Players" },
       { value: live, label: "Live now", live: live > 0 },
@@ -151,13 +160,14 @@ function scoreFor(m, id) {
 }
 
 // Tournament record: group and bracket games (not Armageddon tiebreaks or
-// friendly matches).
+// friendly matches). Points are the group table's: knockout games have a
+// winner, not points.
 function record(id) {
   const done = bracketGames(store.matches).filter((m) => involves(m, id) && m.status === "completed" && m.result);
   const r = { w: 0, d: 0, l: 0, points: 0, games: done.length };
   for (const m of done) {
     const s = scoreFor(m, id);
-    r.points += s;
+    if (m.stage === "group") r.points += s;
     if (s === 1) r.w += 1;
     else if (s === 0.5) r.d += 1;
     else r.l += 1;
@@ -223,7 +233,7 @@ function dashboard(id, viewer) {
   const tiles = `<div class="stat-tiles" data-stagger="load">
     <div class="panel stat-tile"><span class="v">${rec.games}</span><span class="k">Games played</span><span class="sub">${upcoming.length + (next ? 1 : 0)} still to play</span></div>
     <div class="panel stat-tile"><span class="v">${rec.w}<span class="dim">-</span>${rec.d}<span class="dim">-</span>${rec.l}</span><span class="k">Won-drawn-lost</span><span class="sub">In group and knockout games</span></div>
-    <div class="panel stat-tile"><span class="v">${formatPoints(rec.points)}</span><span class="k">Points</span><span class="sub">Win 1, draw ½</span></div>
+    <div class="panel stat-tile"><span class="v">${formatPoints(rec.points)}</span><span class="k">Group points</span><span class="sub">Win 1, draw ½</span></div>
     <div class="panel stat-tile"><span class="v">${esc(st.value)}</span><span class="k">Standing</span><span class="sub">${esc(st.sub)}</span></div>
   </div>`;
 
@@ -285,10 +295,30 @@ function resultRow(m, id) {
 function nextGameHero(m, id, mine) {
   const art = `<img class="art" src="assets/brand/scenes/rising.webp" alt="" aria-hidden="true">`;
   if (!m) {
+    // Nothing left to play is not the same as nothing scheduled yet.
+    const st = standing(id);
+    const champ = championProfile();
+    const their = mine ? "Your" : "Their";
+    let glyph = "hourglass";
+    let title = "No game scheduled yet";
+    let body = "When the organisers set the next game, the countdown starts here and an update arrives in the bell.";
+    if (champ?.id === id) {
+      glyph = "trophy";
+      title = mine ? "You are the champion" : "Champion";
+      body = `${mine ? "You" : "They"} won the final. Every game of the tournament can be replayed in the Arena.`;
+    } else if (champ) {
+      glyph = "flag-checkered";
+      title = "The tournament is over";
+      body = `${champ.full_name} is the champion. ${their} finish: ${st.value === "Out" ? st.sub.toLowerCase() : `${st.value} (${st.sub.toLowerCase()})`}.`;
+    } else if (st.value === "Out" || / eliminated$/.test(st.sub)) {
+      glyph = "flag-checkered";
+      title = `${their} tournament has ended`;
+      body = `${st.value === "Out" ? st.sub : `Finished ${st.value} in ${st.sub.replace(" · eliminated", "")}`}. The rest of the tournament can still be watched live in the Arena.`;
+    }
     return `<div class="panel lit hero" style="justify-content:flex-end">${art}
-      <i class="ph ph-hourglass dim" style="font-size:28px"></i>
-      <h3 class="hero-empty-title mt-4">No game scheduled yet</h3>
-      <p class="muted mt-2" style="max-width:44ch">When the organisers set the next game, the countdown starts here and an update arrives in the bell.</p>
+      <i class="ph ph-${glyph} dim" style="font-size:28px"></i>
+      <h3 class="hero-empty-title mt-4">${esc(title)}</h3>
+      <p class="muted mt-2" style="max-width:44ch">${esc(body)}</p>
     </div>`;
   }
   const live = effectiveStatus(m, serverNow()) === "live";

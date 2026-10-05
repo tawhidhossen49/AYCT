@@ -6,3 +6,6 @@ raw-video/
 assets/sequences/*/_qa/
 supabase/.temp/
 tools/.phosphor/
+
+# Internal documents for the organising team, never part of the website
+*.pdf
