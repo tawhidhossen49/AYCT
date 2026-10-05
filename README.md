@@ -156,6 +156,26 @@ Friendly matches (Control Room, Matches, Friendlies, New match) are extra
 games between any two people, outside the groups and the bracket, with
 their own clock.
 
+## Security
+
+- The database decides who may read or change what (row level security on
+  every table). The key in `assets/js/config.js` is the public "anon" key and
+  is safe to ship; the service key only lives inside the server functions.
+- Every move, clock, draw offer and result goes through the `game` function,
+  which checks the player, the turn, legality and the clock. It refuses
+  requests in bursts (429), one draw offer per player per position, and two
+  arbiter actions can't overwrite each other.
+- Players can't read commentary on their own game until it ends, and can't
+  write to the fair-play log faster than 20 entries a minute.
+- Updates only ever link inside the portal; anything typed by people is
+  escaped before it is shown.
+- Every page carries a Content Security Policy: scripts only from this site
+  and the pinned CDN files (with integrity hashes), data only to this
+  Supabase project. `_headers` (Netlify, Cloudflare Pages) and `vercel.json`
+  add the same policy as real headers, plus no framing and HSTS.
+- In the Supabase dashboard keep "Allow new users to sign up" switched off
+  (Authentication, Sign In / Providers): admins create every account.
+
 ## Running a tournament
 
 1. Control Room, Tournament: create the edition (year, time control).

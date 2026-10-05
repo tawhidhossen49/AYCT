@@ -31,6 +31,16 @@ const json = (body, status = 200) =>
 // time they report thinking, but never less than the server saw minus this.
 const MAX_LAG_MS = 500;
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Requests per person in a 10-second window. Plenty for fast play with
+// premoves; a script hammering the server gets 429. Test bots are driven
+// from the Control Room for many games at once, so bot moves have their
+// own, larger allowance. The count lives in the database (migration 0015),
+// because every request may run on a different server instance.
+const WINDOW_SECONDS = 10;
+const LIMITS = { bot_move: 150, other: 30 };
+
 // A test bot's move: mate if it can, otherwise usually the most valuable
 // safe-looking capture, with some randomness so games differ. Weak on
 // purpose; it exists to exercise the tournament, not to beat anyone.
@@ -75,6 +85,12 @@ Deno.serve(async (req) => {
   } catch {
     return json({ error: "Invalid JSON" }, 400);
   }
+  if (!body || typeof body !== "object") return json({ error: "Invalid request" }, 400);
+  const bucket = body.action === "bot_move" ? "bot_move" : "other";
+  const { data: over } = await admin.rpc("rate_hit", { p_key: `game:${uid}:${bucket}`, p_window_seconds: WINDOW_SECONDS, p_max: LIMITS[bucket] });
+  // If the counter itself fails, games carry on.
+  if (over === true) return json({ error: "Too many requests, slow down" }, 429);
+  if (typeof body.match_id !== "string" || !UUID.test(body.match_id)) return json({ error: "Match not found" }, 404);
 
   const { data: match, error: matchError } = await admin
     .from("matches")
@@ -261,8 +277,19 @@ Deno.serve(async (req) => {
         finish("1/2-1/2", "agreement");
         log("draw_agreed");
       } else {
+        if (match.draw_offer_by === uid) return json({ error: "Your draw offer is already on the table" }, 409);
+        // One offer per player per position, so a declined offer can't be
+        // repeated to pester the opponent until the game moves on.
+        const { count } = await admin
+          .from("game_events")
+          .select("id", { count: "exact", head: true })
+          .eq("match_id", match.id)
+          .eq("user_id", uid)
+          .eq("kind", "draw_offered")
+          .eq("detail->>ply", String(match.move_count));
+        if (count) return json({ error: "You've already offered a draw in this position" }, 409);
         patch.draw_offer_by = uid;
-        log("draw_offered");
+        log("draw_offered", { ply: match.move_count });
       }
       break;
     }
@@ -361,17 +388,22 @@ Deno.serve(async (req) => {
       return json({ error: "Unknown action" }, 400);
   }
 
-  // Only write if nobody else moved in the meantime.
-  const { data: saved, error: saveError } = await admin
+  // Only write if nobody else moved in the meantime. Actions that don't
+  // move a piece (draw offers, pauses, time, results) also need the game to
+  // be exactly as read, so two of them can't overwrite each other.
+  let save = admin
     .from("matches")
     .update(patch)
     .eq("id", match.id)
     .eq("move_count", match.move_count)
-    .neq("status", "completed")
-    .select("*")
-    .maybeSingle();
+    .neq("status", "completed");
+  if (body.action !== "move" && body.action !== "bot_move") save = save.eq("updated_at", match.updated_at);
+  const { data: saved, error: saveError } = await save.select("*").maybeSingle();
 
-  if (saveError) return json({ error: saveError.message }, 500);
+  if (saveError) {
+    console.error("game save failed", saveError);
+    return json({ error: "Couldn't save that, please try again" }, 500);
+  }
   if (!saved) return json({ error: "The board changed, please try again" }, 409);
 
   if (saved.status === "completed") log("game_over", { result: saved.result, reason: saved.end_reason });

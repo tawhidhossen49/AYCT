@@ -4,7 +4,8 @@ import { animateIn, cursorDot, hasGsap, reduced } from "../motion.js";
 
 // Where to go after signing in: back to the page that sent us here, if any.
 const next = new URLSearchParams(location.search).get("next");
-const destination = next && /^[a-z]+\.html/.test(next) ? next : "home.html";
+// Only a page of this site, never another address.
+const destination = next && /^[a-z]+\.html([?#][A-Za-z0-9=&#._~%-]*)?$/.test(next) ? next : "home.html";
 
 // Already signed in? Skip straight in.
 if (await currentProfile()) location.replace(destination);

@@ -22,7 +22,9 @@ import { sendMessage } from "../ops.js";
 // ---------------------------------------------------------------- state
 // Declared before the first await so every function below can use it.
 
-const matchId = new URLSearchParams(location.search).get("id");
+// Only a real game id is used, anywhere (queries, live channels).
+const rawId = new URLSearchParams(location.search).get("id");
+const matchId = rawId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId) ? rawId : null;
 const SETTINGS_KEY = "ayct-arena-settings";
 const DEFAULT_SETTINGS = { board: "steel", sound: true, coords: true, premove: true, dests: true, autoQueen: false };
 const PIECE_VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9 };
@@ -797,7 +799,7 @@ function tiebreakOf() {
 function resultLine() {
   const m = S.match;
   if (!m.result) return "Game over.";
-  const reason = m.end_reason ? ` by ${REASON[m.end_reason] ?? m.end_reason}` : "";
+  const reason = m.end_reason ? ` by ${esc(REASON[m.end_reason] ?? m.end_reason)}` : "";
   if (m.result === "1/2-1/2") {
     return m.draw_odds ? `Drawn${reason}. Black goes through on draw odds.` : `Drawn${reason}.`;
   }
@@ -1306,7 +1308,7 @@ function showResult() {
   let big;
   if (mine) big = winnerColour ? (winnerColour === mine ? "You won" : "You lost") : "Draw";
   else big = winnerColour ? `${nameOf(winnerColour === "white" ? m.white_id : m.black_id).split(" ")[0]} won` : "Draw";
-  const reason = m.end_reason ? `by ${REASON[m.end_reason] ?? m.end_reason}` : "";
+  const reason = m.end_reason ? `by ${esc(REASON[m.end_reason] ?? m.end_reason)}` : "";
   const oddsNote = m.draw_odds && m.result === "1/2-1/2" ? "<p class=\"small muted mt-2\">Armageddon: Black goes through on a draw.</p>" : "";
   const side = (colour) => {
     const id = colour === "white" ? m.white_id : m.black_id;

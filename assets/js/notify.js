@@ -78,11 +78,18 @@ export function timeAgo(iso) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
+// Updates only ever link inside the portal ("play.html?id=..."), never to
+// another site or a javascript: address.
+export function safeLink(link) {
+  return typeof link === "string" && /^[a-z]+\.html([?#][A-Za-z0-9=&#._~%-]*)?$/.test(link) ? link : null;
+}
+
 export function feedItemHtml(n) {
   const inner = `<span class="feed-icon">${icon(KIND_ICON[n.kind] ?? "bell", "bold")}</span>
     <span class="grow"><span class="feed-title">${esc(n.title)}</span>${n.body ? `<span class="feed-body">${esc(n.body)}</span>` : ""}<span class="feed-time">${timeAgo(n.created_at)}</span></span>
     ${n.read_at ? "" : `<span class="feed-dot" aria-label="Unread"></span>`}`;
-  return n.link ? `<a class="feed-item" href="${esc(n.link)}">${inner}</a>` : `<div class="feed-item">${inner}</div>`;
+  const link = safeLink(n.link);
+  return link ? `<a class="feed-item" href="${esc(link)}">${inner}</a>` : `<div class="feed-item">${inner}</div>`;
 }
 
 // ---------------------------------------------------------------- toasts
