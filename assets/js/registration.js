@@ -22,6 +22,17 @@ export function formLink(value) {
   }
 }
 
+// The main page's countdown, set in the Control Room (Tournament tab) and
+// saved with the form links: { at: ISO time, label }. Null when none is set
+// or the time is not a real date.
+export const COUNTDOWN_LABEL = "The tournament starts in";
+export function countdownOf(registration) {
+  const c = registration?.countdown;
+  const at = c?.at ? new Date(c.at).getTime() : NaN;
+  if (!Number.isFinite(at)) return null;
+  return { at, label: String(c.label ?? "").trim().slice(0, 60) || COUNTDOWN_LABEL };
+}
+
 // Each kind's link (or null) for an edition. An edition saved before there
 // were four forms has one link, which was the players' form.
 export function formLinks(registration) {

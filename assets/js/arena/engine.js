@@ -23,8 +23,23 @@ function evaluate(fen, depth) {
   return new Promise((resolve) => {
     let cp = 0;
     let mate = null;
+    const sign = whiteToMove ? 1 : -1;
+    // A search that never reports back is told to stop, which makes the
+    // engine answer with what it has.
+    const giveUp = setTimeout(() => w.postMessage("stop"), 30_000);
+    const done = (value) => {
+      clearTimeout(giveUp);
+      w.removeEventListener("message", onMessage);
+      resolve(value);
+    };
     const onMessage = (e) => {
       const line = String(e.data);
+      // "depth 0" means there is nothing to search: the game is over in this
+      // position (checkmate or stalemate). This engine build then never
+      // sends "bestmove", so the review would wait for ever.
+      if (/^info depth 0 /.test(line)) {
+        return done(/score mate/.test(line) ? { cp: -sign * 10000, mate: null, best: null } : { cp: 0, mate: null, best: null });
+      }
       if (line.startsWith("info") && line.includes(" score ")) {
         const m = line.match(/score (cp|mate) (-?\d+)/);
         if (m) {
@@ -36,12 +51,10 @@ function evaluate(fen, depth) {
           }
         }
       } else if (line.startsWith("bestmove")) {
-        w.removeEventListener("message", onMessage);
         const best = line.split(" ")[1];
-        const sign = whiteToMove ? 1 : -1;
         // "mate 0": the side to move is already checkmated.
-        if (mate === 0) return resolve({ cp: -sign * 10000, mate: null, best: null });
-        resolve({ cp: sign * cp, mate: mate === null ? null : sign * mate, best: best === "(none)" ? null : best });
+        if (mate === 0) return done({ cp: -sign * 10000, mate: null, best: null });
+        done({ cp: sign * cp, mate: mate === null ? null : sign * mate, best: best === "(none)" ? null : best });
       }
     };
     w.addEventListener("message", onMessage);

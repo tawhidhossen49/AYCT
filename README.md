@@ -140,6 +140,15 @@ partnership, and joining the organising team.
   sign-in.
 - Members who are already signed in see "Open the portal" instead.
 
+## Main page countdown
+
+Control Room, Tournament, "Main page countdown" (admins and moderators): pick
+the date and time to count down to, and optionally the line shown above the
+numbers. It appears on the first screen of the main page and again above the
+last "Register now" button, and hides itself once the time has passed. It is
+saved on the edition with the registration form links
+(`tournaments.registration.countdown`).
+
 ## Organising team
 
 Control Room, Organising team is where admins and moderators run the event

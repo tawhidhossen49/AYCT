@@ -9,3 +9,6 @@ tools/.phosphor/
 
 # Internal documents for the organising team, never part of the website
 *.pdf
+
+# Stills and prompt for the promo video, not part of the website
+motion-graphic/

@@ -8,7 +8,7 @@ import { callFunction, supabase } from "../supabase.js";
 import { store, loadAll, loadEmails, subscribe, sortByTime, STAGE_LABEL, effectiveStatus, matchContext, baseClocks, bracketGames, isKnockout, isFriendly } from "../store.js";
 import { formatClock, formatDateTime, formatTime, fromLocalInput, serverNow, toLocalInput } from "../time.js";
 import { TIEBREAK_NOTE } from "../standings.js";
-import { FORM_KINDS, formLink, formLinks } from "../registration.js";
+import { FORM_KINDS, COUNTDOWN_LABEL, countdownOf, formLink, formLinks } from "../registration.js";
 import {
   clearGroups, createTournament, generateGroupFixtures, generateKnockout, qualifiers, R16_PAIRINGS,
   createFriendly, deleteMatch, resetGame, randomDraw, resetRealTestGames, scheduleRound, sendMessage, simulateGames, setActiveTournament, setGroupSlot, updateMatch, updateTournament,
@@ -449,7 +449,47 @@ function tournamentTab() {
         <div class="row gap-3"><button class="btn btn-primary" type="submit">${icon("paper-plane-right", "bold")} Send</button><span data-msg class="small muted"></span></div>
       </form>`
     : "";
-  return `<div class="stack gap-8">${form}${autopilot}${list}</div>`;
+  return `<div class="stack gap-8">${form}${t ? countdownPanel(t) : ""}${autopilot}${list}</div>`;
+}
+
+// The countdown on the main page: a time and a line of text, saved on the
+// edition beside the registration form links.
+function countdownPanel(t) {
+  const cd = countdownOf(t.registration);
+  const left = cd ? cd.at - Date.now() : 0;
+  const days = Math.floor(left / 86_400_000);
+  // With the year, so a date set in the wrong year is easy to spot.
+  const when = cd ? new Date(cd.at).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+  const state = !cd
+    ? "No countdown is set, so the main page shows none."
+    : left <= 0
+      ? `This time has passed (${when}), so the main page no longer shows it.`
+      : `Counting down to ${when}: ${days > 0 ? `${days} day${days === 1 ? "" : "s"}` : "less than a day"} to go.`;
+  return `<form class="panel pad form-grid md-2" data-form="countdown">
+    <div class="span-2"><h2 class="section-title">${icon("hourglass-medium", "bold")} Main page countdown</h2>
+      <p class="small muted mt-1" style="max-width:68ch">Shown on the first screen of the main page and again above the last "Register now" button. It disappears by itself once the time has passed.</p></div>
+    <div class="field"><label for="cd-at">Counts down to</label><input class="input" id="cd-at" name="at" type="datetime-local" value="${cd ? toLocalInput(new Date(cd.at).toISOString()) : ""}"><p class="hint">Your local time. Visitors anywhere see the same moment.</p></div>
+    <div class="field"><label for="cd-label">Line above the numbers</label><input class="input" id="cd-label" name="label" maxlength="60" value="${esc(t.registration?.countdown?.label ?? "")}" placeholder="${COUNTDOWN_LABEL}"><p class="hint">Leave empty for "${COUNTDOWN_LABEL}".</p></div>
+    <p class="span-2 small muted">${esc(state)}</p>
+    <div class="span-2" data-err></div>
+    <div class="span-2 row gap-3 wrap"><button class="btn btn-primary" type="submit">Save countdown</button>
+      ${cd ? `<button class="btn btn-ghost" type="button" data-action="countdown-remove">${icon("trash")} Remove countdown</button>` : ""}
+      <a class="btn" href="index.html" target="_blank" rel="noopener">${icon("eye")} See the main page</a>
+      <span data-msg class="small muted"></span></div>
+  </form>`;
+}
+
+// Saves or clears it without touching the form links kept in the same field.
+async function saveCountdown(countdown, button, errEl) {
+  await withBusy(button, async () => {
+    const registration = { ...(store.tournament.registration ?? {}) };
+    if (countdown) registration.countdown = countdown;
+    else delete registration.countdown;
+    await updateTournament(store.tournament.id, { registration });
+    await refresh();
+    const m = app.querySelector("[data-form=countdown] [data-msg]");
+    if (m) m.textContent = countdown ? "Saved. It is on the main page now." : "Removed.";
+  }, errEl);
 }
 
 function newEditionModal() {
@@ -691,7 +731,7 @@ async function saveFormLinks(form) {
   ui.regErr = bad.length ? `${bad.join(", ")}: that doesn't look like a Google Form link. It should start with https://forms.gle/ or https://docs.google.com/forms/.` : "";
   if (ui.regErr) return draw();
   await withBusy(form.querySelector("[type=submit]"), async () => {
-    await updateTournament(store.tournament.id, { registration: { forms } });
+    await updateTournament(store.tournament.id, { registration: { ...(store.tournament.registration ?? {}), forms } });
     const open = Object.values(forms).filter(Boolean).length;
     ui.regMsg = open ? `Saved. ${open} of ${FORM_KINDS.length} forms are open on the main page.` : `Saved. The main page says "Registration coming soon".`;
     ui.regDraft = {};
@@ -1552,6 +1592,9 @@ app.addEventListener("click", async (e) => {
   switch (el.dataset.action) {
     case "new-edition":
       return newEditionModal();
+    case "countdown-remove":
+      if (!confirm("Remove the countdown from the main page?")) return;
+      return saveCountdown(null, el, app.querySelector("[data-form=countdown] [data-err]"));
     case "new-friendly":
       return friendlyModal();
     case "fill-bots":
@@ -1697,6 +1740,16 @@ app.addEventListener("submit", async (e) => {
   if (chat) {
     e.preventDefault();
     return sendTeamMessage(chat);
+  }
+  const cd = e.target.closest("[data-form=countdown]");
+  if (cd) {
+    e.preventDefault();
+    const errEl = cd.querySelector("[data-err]");
+    if (!cd.at.value) {
+      errEl.innerHTML = notice("Choose the date and time to count down to.", "error");
+      return;
+    }
+    return saveCountdown({ at: fromLocalInput(cd.at.value), label: cd.label.value.trim() }, cd.querySelector("[type=submit]"), errEl);
   }
   const auto = e.target.closest("[data-form=autopilot]");
   if (auto) {

@@ -1,7 +1,7 @@
 // Public landing page: preloader, pinned hero, the road to the crown, the
 // ring of groups, a live demo board, the roles deck, and the footer.
 
-import { FORM_KINDS, formLinks } from "../registration.js";
+import { FORM_KINDS, formLinks, countdownOf } from "../registration.js";
 import { supabase } from "../supabase.js";
 import { currentProfile } from "../auth.js";
 import { reduced, hasGsap, lite, initSmoothScroll, getLenis, animateIn, navAutoHide, progressRing, cursorDot, glide } from "../motion.js";
@@ -30,7 +30,47 @@ const edition = supabase
   .then(({ data }) => data);
 edition.then((data) => {
   if (data?.year) document.querySelectorAll("[data-year]").forEach((el) => (el.textContent = data.year));
+  startCountdown(countdownOf(data?.registration));
 });
+
+// The countdown on the first screen and above the last Register button.
+// The organisers set its time and wording; it disappears once the time
+// has passed.
+function startCountdown(cd) {
+  const slots = [...document.querySelectorAll("[data-countdown-slot]")];
+  if (!cd || cd.at <= Date.now() || !slots.length) return;
+  const two = (n) => String(n).padStart(2, "0");
+  const units = [["Days", 86_400_000], ["Hrs", 3_600_000], ["Min", 60_000], ["Sec", 1000]];
+  for (const slot of slots) {
+    slot.querySelector("[data-countdown-label]").textContent = cd.label;
+    slot.querySelector("[data-countdown-units]").innerHTML = units.map(([name]) => `<span class="lc__unit"><b>00</b><i>${name}</i></span>`).join("");
+    slot.hidden = false;
+  }
+  // Short phones make room for it on the first screen (see landing.css).
+  const intro = document.querySelector(".hv__intro");
+  intro?.classList.add("has-countdown");
+  const paint = () => {
+    let left = cd.at - Date.now();
+    if (left <= 0) {
+      slots.forEach((slot) => (slot.hidden = true));
+      intro?.classList.remove("has-countdown");
+      clearInterval(timer);
+      return;
+    }
+    const values = units.map(([, ms]) => {
+      const v = Math.floor(left / ms);
+      left -= v * ms;
+      return two(v);
+    });
+    for (const slot of slots) {
+      slot.querySelectorAll(".lc__unit b").forEach((el, i) => {
+        if (el.textContent !== values[i]) el.textContent = values[i];
+      });
+    }
+  };
+  const timer = setInterval(paint, 1000);
+  paint();
+}
 
 // "Register now" asks what the visitor wants to register for (player,
 // campus ambassador, partnership, organising team) and opens that Google

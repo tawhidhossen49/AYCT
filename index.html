@@ -90,6 +90,11 @@
             </h1>
           </div>
           <div class="hv__intro-bottom">
+            <!-- Countdown set in the Control Room; hidden when none is set or it has passed. -->
+            <div class="lc" data-countdown-slot data-intro hidden>
+              <p class="lc__label" data-countdown-label></p>
+              <div class="lc__units" role="timer" data-countdown-units></div>
+            </div>
             <p class="hv__tagline" data-intro>Think. Play. Become legendary.</p>
             <div class="hv__ctas" data-intro>
               <a class="btn btn-primary btn-lg" data-register-link aria-disabled="true" data-magnetic>Registration coming soon</a>
@@ -292,6 +297,10 @@
       <div class="cta__copy">
         <h2 class="display chrome-text" data-split>Your move.</h2>
         <p data-reveal>Register for this year's tournament. Once the organisers confirm your place, your group, your opponents and the countdown to your first game are waiting in the portal.</p>
+        <div class="lc lc--big" data-countdown-slot data-reveal hidden>
+          <p class="lc__label" data-countdown-label></p>
+          <div class="lc__units" role="timer" data-countdown-units></div>
+        </div>
         <a class="btn btn-primary btn-lg" data-register-link aria-disabled="true" data-magnetic data-reveal>Registration coming soon</a>
       </div>
     </section>
