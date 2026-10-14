@@ -42,5 +42,87 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/admin",
+      "destination": "/admin.html",
+      "permanent": false
+    },
+    {
+      "source": "/admin/",
+      "destination": "/admin.html",
+      "permanent": false
+    },
+    {
+      "source": "/home",
+      "destination": "/home.html",
+      "permanent": false
+    },
+    {
+      "source": "/home/",
+      "destination": "/home.html",
+      "permanent": false
+    },
+    {
+      "source": "/play",
+      "destination": "/play.html",
+      "permanent": false
+    },
+    {
+      "source": "/play/",
+      "destination": "/play.html",
+      "permanent": false
+    },
+    {
+      "source": "/fixtures",
+      "destination": "/fixtures.html",
+      "permanent": false
+    },
+    {
+      "source": "/fixtures/",
+      "destination": "/fixtures.html",
+      "permanent": false
+    },
+    {
+      "source": "/groups",
+      "destination": "/groups.html",
+      "permanent": false
+    },
+    {
+      "source": "/groups/",
+      "destination": "/groups.html",
+      "permanent": false
+    },
+    {
+      "source": "/bracket",
+      "destination": "/bracket.html",
+      "permanent": false
+    },
+    {
+      "source": "/bracket/",
+      "destination": "/bracket.html",
+      "permanent": false
+    },
+    {
+      "source": "/login",
+      "destination": "/login.html",
+      "permanent": false
+    },
+    {
+      "source": "/login/",
+      "destination": "/login.html",
+      "permanent": false
+    },
+    {
+      "source": "/match",
+      "destination": "/match.html",
+      "permanent": false
+    },
+    {
+      "source": "/match/",
+      "destination": "/match.html",
+      "permanent": false
+    }
   ]
 }

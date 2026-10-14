@@ -1,0 +1,17 @@
+# Short addresses (Netlify, Cloudflare Pages): /admin and /admin/ open admin.html
+/admin    /admin.html    302
+/admin/   /admin.html    302
+/home    /home.html    302
+/home/   /home.html    302
+/play    /play.html    302
+/play/   /play.html    302
+/fixtures    /fixtures.html    302
+/fixtures/   /fixtures.html    302
+/groups    /groups.html    302
+/groups/   /groups.html    302
+/bracket    /bracket.html    302
+/bracket/   /bracket.html    302
+/login    /login.html    302
+/login/   /login.html    302
+/match    /match.html    302
+/match/   /match.html    302
