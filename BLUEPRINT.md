@@ -11,7 +11,7 @@
 | 0 | Preloader | Brand moment while fonts load | Percentage ring around the logo | ring fills, iris opens into the hero | no |
 | 1 | Nav | Always there | Floating glass pill: logo, Format, Road, Groups, Play, FAQ, **Sign in** | hides on scroll down, returns on scroll up | no |
 | 2 | Hero | First impression | Scroll-driven film (180 frames): camera glides between chrome pieces to a lone king. Title above the distant king; "Think." left, "Play." right; "Become / Legendary." flanking the king | pinned 320vh (240vh phones), plays forward on scroll down and rewinds on scroll up, eased catch-up, final frame holds | **yes** (`assets/sequences/hero`) |
-| 3 | Ticker | Rhythm break | Infinite band: 32 players · 8 groups · 64 games · one champion | speeds up with scroll | no |
+| 3 | Ticker | Rhythm break | Infinite band: 32 players · 8 groups · 130 games · one champion | speeds up with scroll | no |
 | 4 | Manifesto | Why it matters | Word-by-word scroll highlight | words light up as you scroll | no |
 | 5 | Numbers | Format at a glance | Glass stat cards: 32 / 8 / 64 / 10+5 | counters roll up | no |
 | 6 | Road to the Crown | **Signature** | Pinned horizontal rail: Group stage, Round of 16, Quarterfinals, Semifinals, Final, with the giant 32 → 1 counter | scrubbed horizontal travel | no |

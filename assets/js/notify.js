@@ -1,4 +1,4 @@
-// The updates feed: game times, results, advancement, Armageddon tiebreaks
+// The updates feed: game times, results, advancement, series tiebreaks
 // and arbiter messages. The database writes these (see migration 0005);
 // the bell in the top bar shows them live, with a toast for new ones.
 

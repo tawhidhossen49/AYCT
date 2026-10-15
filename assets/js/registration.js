@@ -5,7 +5,7 @@
 
 // What people can register for, in the order they are shown.
 export const FORM_KINDS = [
-  { key: "player", label: "Player registration", blurb: "Play in the tournament: 32 players, 8 groups, one champion.", icon: "crown-simple" },
+  { key: "player", label: "Player registration", blurb: "Enter the Selection Round on Lichess. The top 32 play the main event.", icon: "crown-simple" },
   { key: "ca", label: "Campus Ambassador (CA)", blurb: "Represent AYCT at your school, college or university.", icon: "megaphone" },
   { key: "partner", label: "Club or organisation partnership", blurb: "Partner your club or organisation with the tournament.", icon: "handshake" },
   { key: "organiser", label: "Join the organising team", blurb: "Help run AYCT as one of the organisers.", icon: "users-three" },

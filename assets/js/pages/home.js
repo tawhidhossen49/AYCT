@@ -6,7 +6,7 @@
 // to see exactly what that player sees.
 
 import { isStaff } from "../auth.js";
-import { store, effectiveStatus, involves, sortByTime, matchContext, bracketGames, isKnockout, timeControlLabel, TOTAL_GAMES } from "../store.js";
+import { store, effectiveStatus, involves, sortByTime, matchContext, bracketGames, timeControlLabel, TOTAL_GAMES, GROUP_GAMES, scoreFor, seriesState, tieOf } from "../store.js";
 import { countdownHtml, formatDateTime, serverNow } from "../time.js";
 import { formatPoints, groupStandings } from "../standings.js";
 import { esc, groupTableHtml, icon, liveTag, matchRowHtml, playerHtml, resultText, sectionHead } from "../ui.js";
@@ -16,8 +16,8 @@ import { startPage } from "../page.js";
 
 const STATUS_LINE = {
   setup: "The organisers are setting up this year's edition.",
-  groups: "Group stage in progress. The top two in each group go through.",
-  knockout: "Knockout stage. One game, one winner, every round.",
+  groups: "Group stage in progress. Everyone plays everyone twice; the top two in each group go through.",
+  knockout: "Knockout stage. Every tie is a series, with colours reversed after each game.",
   complete: "The tournament is complete. A champion has been crowned.",
 };
 // The same line, naming the champion once the final has a winner.
@@ -26,10 +26,10 @@ function statusLine(t) {
   return t.status === "complete" && champ ? `The tournament is complete. ${esc(champ.full_name)} is the champion.` : STATUS_LINE[t.status];
 }
 function championProfile() {
-  const final = store.matches.find((m) => m.stage === "final" && !m.tiebreak_of);
+  const final = store.ties.find((m) => m.stage === "final");
   return store.tournament?.status === "complete" && final?.winner_id ? store.profileById.get(final.winner_id) : null;
 }
-const STAGE_NAME = { group: "Group stage", r16: "Round of 16", qf: "Quarterfinal", sf: "Semifinal", third: "Third-place game", final: "Final" };
+const STAGE_NAME = { group: "Group stage", r16: "Round of 16", qf: "Quarterfinal", sf: "Semifinal", third: "Third-place series", final: "Final" };
 const STAGE_ORDER = ["group", "r16", "qf", "sf", "third", "final"];
 
 // Whose dashboard this is, and their updates feed. Declared before the
@@ -154,14 +154,8 @@ function nextGame(id) {
   return mine.find((m) => effectiveStatus(m, now) === "live") ?? mine[0] ?? null;
 }
 
-function scoreFor(m, id) {
-  if (m.result === "1/2-1/2") return 0.5;
-  return (m.result === "1-0") === (m.white_id === id) ? 1 : 0;
-}
-
-// Tournament record: group and bracket games (not Armageddon tiebreaks or
-// friendly matches). Points are the group table's: knockout games have a
-// winner, not points.
+// Tournament record: group and knockout series games (not tiebreak games
+// or friendly matches). Points are the group table's.
 function record(id) {
   const done = bracketGames(store.matches).filter((m) => involves(m, id) && m.status === "completed" && m.result);
   const r = { w: 0, d: 0, l: 0, points: 0, games: done.length };
@@ -177,18 +171,18 @@ function record(id) {
 
 // Where the player stands in the tournament, in a few words.
 function standing(id) {
-  const ko = bracketGames(store.matches).filter((m) => isKnockout(m) && involves(m, id));
+  const ko = store.ties.filter((m) => involves(m, id));
   if (ko.length) {
     const deepest = ko.sort((a, b) => STAGE_ORDER.indexOf(b.stage) - STAGE_ORDER.indexOf(a.stage))[0];
     if (deepest.stage === "final" && deepest.winner_id === id) return { value: "Champion", sub: "Won the final" };
     if (deepest.stage === "final" && deepest.winner_id) return { value: "2nd", sub: "Runner-up" };
-    if (deepest.stage === "third" && deepest.winner_id) return deepest.winner_id === id ? { value: "3rd", sub: "Won the third-place game" } : { value: "4th", sub: "Fourth place" };
+    if (deepest.stage === "third" && deepest.winner_id) return deepest.winner_id === id ? { value: "3rd", sub: "Won the third-place series" } : { value: "4th", sub: "Fourth place" };
     if (deepest.stage === "third") return { value: "Third place", sub: "Plays for third" };
     if (deepest.winner_id && deepest.winner_id !== id) return { value: "Out", sub: `Lost in the ${STAGE_NAME[deepest.stage]}` };
     return { value: STAGE_NAME[deepest.stage], sub: deepest.winner_id === id ? "Through to the next round" : "Still in" };
   }
   const gp = store.groupPlayers.find((x) => x.player_id === id);
-  if (!gp) return { value: "-", sub: "Not drawn yet" };
+  if (!gp) return { value: "-", sub: "Not in a group yet" };
   const g = store.groups.find((x) => x.id === gp.group_id);
   const table = groupStandings(gp.group_id, store.groupPlayers, store.matches, store.profileById);
   const rank = table.findIndex((r) => r.playerId === id) + 1;
@@ -328,7 +322,7 @@ function nextGameHero(m, id, mine) {
     <div class="mt-6">
       <p class="small muted">${mine ? "You play" : "Plays"} ${white ? "white" : "black"} against</p>
       <p class="opponent">${playerHtml(white ? m.black_id : m.white_id)}</p>
-      ${m.draw_odds ? `<p class="small muted mt-2">${icon("lightning", "bold")} Armageddon: ${white ? "White must win" : "a draw is enough for Black"}.</p>` : ""}
+      ${seriesLine(m, id)}
     </div>
     <div class="hero-foot">
       ${live
@@ -337,6 +331,23 @@ function nextGameHero(m, id, mine) {
       <a class="btn btn-lg ${live ? "btn-primary" : ""}" href="play.html?id=${m.id}">${live ? (mine ? "Play now" : "Watch") : "Enter the Arena"} <i class="ph-bold ph-arrow-right"></i></a>
     </div>
   </div>`;
+}
+
+// For a knockout game: where the series stands, and what this game means.
+function seriesLine(m, id) {
+  const tie = tieOf(m);
+  if (!tie) return "";
+  const s = seriesState(tie);
+  const me = tie.white_id === id ? s.a : s.b;
+  const them = tie.white_id === id ? s.b : s.a;
+  const score = `${formatPoints(me)}-${formatPoints(them)}`;
+  let text;
+  if (m.game_kind === "decider") {
+    text = m.draw_winner_id === id ? "Decider: a draw is enough to go through." : "Decider: only a win takes you through.";
+    if (m.choose_by === id) text += " Choose your colour in the Arena before it starts.";
+  } else if (m.game_kind === "tiebreak") text = `Tiebreak game: the series is level at ${score}.`;
+  else text = `Game ${m.game_no} of ${s.main.length}. Series score ${score}.`;
+  return `<p class="small muted mt-2">${icon("swap", "bold")} ${esc(text)}</p>`;
 }
 
 // ---------------------------------------------------------------- organiser and commentator overview
@@ -365,7 +376,7 @@ function firstSteps() {
   const steps = [
     { n: "01", title: "Create the edition", body: "Name this year's tournament and set the clock. Eight empty groups are made for you.", href: "admin.html#tournament", cta: "Create edition" },
     { n: "02", title: "Add the players", body: "Give each of the 32 players, moderators and commentators an email and password.", href: "admin.html#people", cta: "Add people" },
-    { n: "03", title: "Run the draw", body: "A random draw deals the 32 players into the eight groups, or place them by hand.", href: "admin.html#groups", cta: "Open the draw" },
+    { n: "03", title: "Enter the Selection Round", body: "Rank the top 32 from the Lichess Selection Round. They are placed into the eight groups by rank.", href: "admin.html#groups", cta: "Enter the ranking" },
   ];
   return `<section class="s-block">
     ${sectionHead("Getting started", "Three steps", "to the first move.")}
@@ -383,7 +394,7 @@ function firstSteps() {
 }
 
 function champion() {
-  const final = store.matches.find((m) => m.stage === "final" && !m.tiebreak_of);
+  const final = store.ties.find((m) => m.stage === "final");
   const p = final?.winner_id ? store.profileById.get(final.winner_id) : null;
   if (!p) return "";
   return `<div class="panel lit pad champion">
@@ -398,12 +409,12 @@ function checklist() {
   const groupGames = store.matches.filter((m) => m.stage === "group");
   const scheduled = groupGames.filter((m) => m.scheduled_at).length;
   const finished = groupGames.filter((m) => m.status === "completed").length;
-  const knockout = bracketGames(store.matches).filter(isKnockout);
+  const knockout = store.ties;
   const steps = [
     { label: "Player accounts", detail: `${players} of 32`, done: players >= 32, href: "admin.html#people" },
-    { label: "Groups drawn", detail: `${store.groupPlayers.length} of 32 placed`, done: store.groupPlayers.length === 32, href: "admin.html#groups" },
-    { label: "Group fixtures", detail: groupGames.length ? `${groupGames.length} games, ${scheduled} scheduled` : "Not generated", done: groupGames.length === 48 && scheduled === 48, href: "admin.html#matches" },
-    { label: "Group stage played", detail: `${finished} of ${groupGames.length || 48} finished`, done: groupGames.length > 0 && finished === groupGames.length, href: "admin.html#live" },
+    { label: "Selection Round ranking", detail: `${store.groupPlayers.length} of 32 placed`, done: store.groupPlayers.length === 32, href: "admin.html#groups" },
+    { label: "Group fixtures", detail: groupGames.length ? `${groupGames.length} games, ${scheduled} scheduled` : "Not generated", done: groupGames.length === GROUP_GAMES && scheduled === GROUP_GAMES, href: "admin.html#matches" },
+    { label: "Group stage played", detail: `${finished} of ${groupGames.length || GROUP_GAMES} finished`, done: groupGames.length > 0 && finished === groupGames.length, href: "admin.html#live" },
     { label: "Knockout bracket", detail: knockout.length ? "Generated" : store.tournament.auto_knockout ? "Builds itself after the last group game" : "Not generated", done: knockout.length > 0, href: "admin.html#knockout" },
     { label: "Champion crowned", detail: store.tournament.status === "complete" ? "Done" : "Pending", done: store.tournament.status === "complete", href: "bracket.html" },
   ];

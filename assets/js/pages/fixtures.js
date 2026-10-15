@@ -1,4 +1,4 @@
-import { store, involves, sortByTime, effectiveStatus, STAGE_LABEL } from "../store.js";
+import { store, involves, sortByTime, effectiveStatus, STAGE_LABEL, GROUP_ROUNDS } from "../store.js";
 import { formatDate, serverNow } from "../time.js";
 import { emptyState, matchRowHtml } from "../ui.js";
 import { startPage } from "../page.js";
@@ -6,9 +6,7 @@ import { startPage } from "../page.js";
 const FILTERS = [
   { id: "all", label: "All", test: () => true },
   { id: "mine", label: "My games", test: () => true },
-  { id: "g1", label: "Group round 1", test: (m) => m.stage === "group" && m.round === 1 },
-  { id: "g2", label: "Group round 2", test: (m) => m.stage === "group" && m.round === 2 },
-  { id: "g3", label: "Group round 3", test: (m) => m.stage === "group" && m.round === 3 },
+  ...Array.from({ length: GROUP_ROUNDS }, (_, i) => ({ id: `g${i + 1}`, label: `Group round ${i + 1}`, test: (m) => m.stage === "group" && m.round === i + 1 })),
   { id: "r16", label: STAGE_LABEL.r16, test: (m) => m.stage === "r16" },
   { id: "qf", label: "Quarterfinals", test: (m) => m.stage === "qf" },
   { id: "sf", label: "Semifinals", test: (m) => m.stage === "sf" },

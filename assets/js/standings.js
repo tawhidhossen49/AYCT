@@ -1,13 +1,8 @@
 // Group tables and tiebreaks.
 
-export const TIEBREAK_NOTE = "Win 1, draw ½. Ties go to Sonneborn-Berger, then wins, then head-to-head, then the order of the draw.";
+import { scoreFor } from "./store.js";
 
-function scoreFor(m, playerId) {
-  if (!m.result) return null;
-  if (m.result === "1/2-1/2") return 0.5;
-  const whiteWon = m.result === "1-0";
-  return (m.white_id === playerId) === whiteWon ? 1 : 0;
-}
+export const TIEBREAK_NOTE = "Win 1, draw ½. Level players are split by Sonneborn-Berger, then wins, then head-to-head, then Selection Round rank.";
 
 export function groupStandings(groupId, groupPlayers, matches, profileById) {
   const members = groupPlayers.filter((gp) => gp.group_id === groupId).sort((a, b) => a.seed - b.seed);
@@ -55,6 +50,7 @@ export function groupStandings(groupId, groupPlayers, matches, profileById) {
   }
 
   return [...rows.values()].sort(
+    // The seed is the Selection Round order inside the group, so a lower seed is the better rank.
     (a, b) => b.points - a.points || b.sb - a.sb || b.wins - a.wins || b.mini - a.mini || a.seed - b.seed,
   );
 }

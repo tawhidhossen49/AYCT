@@ -5,13 +5,17 @@
 
 import { ROLE_LABEL } from "../auth.js";
 import { callFunction, supabase } from "../supabase.js";
-import { store, loadAll, loadEmails, subscribe, sortByTime, STAGE_LABEL, effectiveStatus, matchContext, baseClocks, bracketGames, isKnockout, isFriendly } from "../store.js";
+import {
+  store, loadAll, loadEmails, subscribe, sortByTime, STAGE_LABEL, effectiveStatus, matchContext, baseClocks, bracketGames, isKnockout, isFriendly,
+  GROUP_ROUNDS, GROUP_GAMES, TOTAL_GAMES, KNOCKOUT_STAGES, formatOf, clockLabel, seriesState, seriesGames, rankOf, rankFor,
+} from "../store.js";
 import { formatClock, formatDateTime, formatTime, fromLocalInput, serverNow, toLocalInput } from "../time.js";
-import { TIEBREAK_NOTE } from "../standings.js";
+import { TIEBREAK_NOTE, formatPoints } from "../standings.js";
 import { FORM_KINDS, COUNTDOWN_LABEL, countdownOf, formLink, formLinks } from "../registration.js";
 import {
   clearGroups, createTournament, generateGroupFixtures, generateKnockout, qualifiers, R16_PAIRINGS,
   createFriendly, deleteMatch, resetGame, randomDraw, resetRealTestGames, scheduleRound, sendMessage, simulateGames, setActiveTournament, setGroupSlot, updateMatch, updateTournament,
+  placeByRank, setTieWinner,
 } from "../ops.js";
 import { emptyState, esc, icon, liveTag, modalOpen, notice, openModal, playerHtml, statusHtml, withBusy } from "../ui.js";
 import { mountMiniBoards } from "../board.js";
@@ -33,9 +37,7 @@ const TABS = [
 const ROLES = ["player", "moderator", "commentator", "admin"];
 const STATUS_LABEL = { setup: "Setting up", groups: "Group stage", knockout: "Knockout stage", complete: "Complete" };
 const ROUNDS = [
-  { key: "g1", label: "Group round 1", test: (m) => m.stage === "group" && m.round === 1 },
-  { key: "g2", label: "Group round 2", test: (m) => m.stage === "group" && m.round === 2 },
-  { key: "g3", label: "Group round 3", test: (m) => m.stage === "group" && m.round === 3 },
+  ...Array.from({ length: GROUP_ROUNDS }, (_, i) => ({ key: `g${i + 1}`, label: `Group round ${i + 1}`, test: (m) => m.stage === "group" && m.round === i + 1 })),
   { key: "r16", label: STAGE_LABEL.r16, test: (m) => m.stage === "r16" },
   { key: "qf", label: "Quarterfinals", test: (m) => m.stage === "qf" },
   { key: "sf", label: "Semifinals", test: (m) => m.stage === "sf" },
@@ -51,6 +53,7 @@ const ui = {
   roleFilter: "all",
   query: "",
   round: "g1",
+  gameNo: 1,
   testMsg: "",
   // Organising team tab
   taskFilter: "all",
@@ -80,7 +83,18 @@ const EVENT_TEXT = {
   takeback: "took back a move",
   adjudicated: "adjudicated the game",
   game_over: "Game over",
+  colour_chosen: "chose the colours for the decider",
 };
+// The stages whose clocks are set on the Tournament tab, in order.
+const CLOCK_ROWS = [
+  ["group", "Group stage", "Double round robin"],
+  ["r16", "Round of 16", "Two-game series"],
+  ["qf", "Quarterfinals", "Two-game series"],
+  ["sf", "Semifinals", "Two-game series"],
+  ["third", "Third place", "Two-game series"],
+  ["final", "Final", "Four games, all played"],
+  ["tiebreak", "Tiebreak and decider", "One game each, when a series is level"],
+];
 
 
 const { profile, app, redrawHero } = await startPage("admin", { staff: true, hero });
@@ -239,11 +253,11 @@ function offline(userId, matchId) {
 function liveClocks(m) {
   const base = baseClocks(m);
   const now = serverNow();
-  if (m.status === "scheduled") return { white: base.white - Math.max(0, now - new Date(m.scheduled_at).getTime()), black: base.black, turn: "white" };
   const turn = (m.fen.split(" ")[1] ?? "w") === "w" ? "white" : "black";
   const w = m.white_ms ?? base.white;
   const b = m.black_ms ?? base.black;
-  if (m.paused_at || !m.clock_started_at || m.status === "completed") return { white: w, black: b, turn };
+  // No clock runs until both players have made their first move.
+  if (m.status !== "live" || (m.move_count ?? 0) < 2 || m.paused_at || !m.clock_started_at) return { white: w, black: b, turn };
   const el = now - new Date(m.clock_started_at).getTime();
   return turn === "white" ? { white: w - el, black: b, turn } : { white: w, black: b - el, turn };
 }
@@ -345,10 +359,10 @@ function liveTab() {
   return `<div class="stack gap-8">
     <div class="ctl-auto">
       <span class="strong">${icon("robot", "bold")} Autopilot</span>
-      <span class="${t.auto_tiebreak ? "on" : ""}">Armageddon tiebreaks ${t.auto_tiebreak ? "on" : "off"}</span>
+      <span class="${t.auto_tiebreak ? "on" : ""}">Series tiebreaks ${t.auto_tiebreak ? "on" : "off"}</span>
       <span class="${t.auto_knockout ? "on" : ""}">Bracket after groups ${t.auto_knockout ? "on" : "off"}</span>
-      <span class="on">Timeouts and no-shows</span>
-      <span class="on">Reminders 10 min before</span>
+      <span class="on">Timeouts and 5-minute forfeits</span>
+      <span class="on">Reminders 15 min before</span>
       <a href="#tournament" class="ml-auto small">Settings ${icon("arrow-right")}</a>
     </div>
     <div data-err></div>
@@ -409,10 +423,23 @@ function tournamentTab() {
   const t = store.tournament;
   const form = t
     ? `<form class="panel pad form-grid md-2" data-form="edition">
-        <div class="span-2"><h2 class="section-title">Current edition</h2><p class="small muted mt-1">Time control applies to games that haven't started yet.</p></div>
+        <div class="span-2"><h2 class="section-title">Current edition</h2><p class="small muted mt-1">Clock changes apply to every game that hasn't started yet, and to games made later.</p></div>
         <div class="field span-2"><label for="ed-name">Name</label><input class="input" id="ed-name" name="name" value="${esc(t.name)}" required></div>
-        <div class="field"><label for="ed-min">Minutes per player</label><input class="input" id="ed-min" name="minutes" type="number" min="1" max="180" value="${t.time_control_minutes}"><p class="hint">Each player's clock at the start.</p></div>
-        <div class="field"><label for="ed-inc">Increment (seconds)</label><input class="input" id="ed-inc" name="increment" type="number" min="0" max="60" value="${t.increment_seconds}"><p class="hint">Added after every move.</p></div>
+        <div class="span-2">
+          <p class="strong small">Clocks by stage <span class="hint">(minutes + seconds added per move)</span></p>
+          <div class="clock-grid mt-3">${CLOCK_ROWS.map(([key, label, hint]) => {
+            const f = formatOf(key, t);
+            return `<div class="clock-row"><span><span class="small strong" style="display:block">${label}</span><span class="hint">${hint}</span></span>
+              <label class="sr-only" for="ck-${key}-m">${label} minutes</label><input class="input sm" id="ck-${key}-m" name="ck-${key}-m" type="number" min="1" max="180" value="${f.minutes}">
+              <span class="dim">+</span>
+              <label class="sr-only" for="ck-${key}-i">${label} increment</label><input class="input sm" id="ck-${key}-i" name="ck-${key}-i" type="number" min="0" max="60" value="${f.increment}"></div>`;
+          }).join("")}
+            <div class="clock-row"><span><span class="small strong" style="display:block">Friendly matches</span><span class="hint">The suggested clock for a new friendly</span></span>
+              <label class="sr-only" for="ed-min">Friendly minutes</label><input class="input sm" id="ed-min" name="minutes" type="number" min="1" max="180" value="${t.time_control_minutes}">
+              <span class="dim">+</span>
+              <label class="sr-only" for="ed-inc">Friendly increment</label><input class="input sm" id="ed-inc" name="increment" type="number" min="0" max="60" value="${t.increment_seconds}"></div>
+          </div>
+        </div>
         <div class="field"><label for="ed-status">Stage</label><select class="input" id="ed-status" name="status">${Object.entries(STATUS_LABEL).map(([k, v]) => `<option value="${k}" ${k === t.status ? "selected" : ""}>${v}</option>`).join("")}</select><p class="hint">Moves on by itself as you generate fixtures and the bracket.</p></div>
         <div class="span-2 row gap-3"><button class="btn btn-primary" type="submit">Save changes</button><span data-msg class="small muted"></span></div>
       </form>`
@@ -435,9 +462,9 @@ function tournamentTab() {
   const autopilot = t
     ? `<form class="panel pad form-grid md-2" data-form="autopilot">
         <div class="span-2"><h2 class="section-title">${icon("robot", "bold")} Autopilot</h2><p class="small muted mt-1">What the tournament does by itself. Timeouts, no-shows, standings, advancement and reminders always run.</p></div>
-        <label class="row gap-3 span-2" style="cursor:pointer"><input type="checkbox" name="auto_tiebreak" ${t.auto_tiebreak ? "checked" : ""} style="width:1.1rem;height:1.1rem;flex-shrink:0;accent-color:#d9dce2"><span><span class="strong small" style="display:block">Armageddon tiebreaks</span><span class="hint">When a knockout game is drawn, create an Armageddon game with colours reversed: White 5 min, Black 4 min, +2 s. Black goes through on a draw.</span></span></label>
+        <label class="row gap-3 span-2" style="cursor:pointer"><input type="checkbox" name="auto_tiebreak" ${t.auto_tiebreak ? "checked" : ""} style="width:1.1rem;height:1.1rem;flex-shrink:0;accent-color:#d9dce2"><span><span class="strong small" style="display:block">Series tiebreaks</span><span class="hint">When a knockout series is level, create a ${clockLabel(formatOf("tiebreak", t))} tiebreak game with the colours of the last game reversed. If that is drawn too, a decider: the lower-ranked player picks the colour and a draw sends the higher-ranked player through. Switched off, you set the winner of a level series on the Knockout tab.</span></span></label>
         <label class="row gap-3 span-2" style="cursor:pointer"><input type="checkbox" name="auto_knockout" ${t.auto_knockout ? "checked" : ""} style="width:1.1rem;height:1.1rem;flex-shrink:0;accent-color:#d9dce2"><span><span class="strong small" style="display:block">Build the bracket after the groups</span><span class="hint">When the last group game ends, the round of 16 is drawn from the final tables.</span></span></label>
-        <div class="field"><label for="ap-delay">Armageddon starts after (minutes)</label><input class="input" id="ap-delay" name="delay" type="number" min="1" max="1440" value="${t.tiebreak_delay_minutes}"></div>
+        <div class="field"><label for="ap-delay">Tiebreak and decider start after (minutes)</label><input class="input" id="ap-delay" name="delay" type="number" min="1" max="1440" value="${t.tiebreak_delay_minutes}"></div>
         <div class="field"><label for="ap-draw">Draw offers allowed from move</label><input class="input" id="ap-draw" name="draw_min" type="number" min="0" max="100" value="${t.draw_offer_min_moves}"><p class="hint">0 allows draw offers at any time.</p></div>
         <div class="span-2 row gap-3"><button class="btn btn-primary" type="submit">Save autopilot</button><span data-msg class="small muted"></span></div>
       </form>
@@ -641,8 +668,8 @@ function groupsTab() {
             .filter((p) => p.id === current?.player_id || !placed.has(p.id))
             .map((p) => `<option value="${p.id}" ${p.id === current?.player_id ? "selected" : ""}>${esc(p.full_name)}</option>`)
             .join("");
-          return `<div class="slot"><span class="pot" title="Place ${seed}">${seed}</span>
-            <label class="sr-only" for="slot-${g.id}-${seed}">Group ${g.label}, place ${seed}</label>
+          return `<div class="slot"><span class="pot" title="Selection Round rank ${rankFor(g.label, seed)}">${rankFor(g.label, seed)}</span>
+            <label class="sr-only" for="slot-${g.id}-${seed}">Group ${g.label}, rank ${rankFor(g.label, seed)}</label>
             <select class="input sm" id="slot-${g.id}-${seed}" data-slot data-group="${g.id}" data-seed="${seed}"><option value="">Empty</option>${options}</select></div>`;
         })
         .join("");
@@ -652,13 +679,14 @@ function groupsTab() {
 
   return `<div class="stack gap-6">
     <div class="split">
-      <p class="muted" style="max-width:60ch"><span class="num" style="color:var(--fg)">${store.groupPlayers.length}</span> of 32 players placed. Run a random draw, or pick players place by place.</p>
-      <div class="row gap-2">
+      <p class="muted" style="max-width:66ch"><span class="num" style="color:var(--fg)">${store.groupPlayers.length}</span> of 32 players placed. The groups come from the Lichess Selection Round: enter the top 32 in rank order and each lands in their group, Group A holding ranks 1, 9, 17 and 25, Group B 2, 10, 18 and 26, and so on. The number beside each slot is its rank.</p>
+      <div class="row gap-2 wrap">
         <button class="btn btn-ghost" data-action="clear-groups" ${store.groupPlayers.length ? "" : "disabled"}>Clear all</button>
-        <button class="btn btn-primary" data-action="draw" ${players.length < 32 ? "disabled" : ""}>${icon("shuffle", "bold")} Random draw</button>
+        <button class="btn btn-ghost" data-action="draw" ${players.length < 32 ? "disabled" : ""} title="A random order, for rehearsals">${icon("shuffle", "bold")} Random order</button>
+        <button class="btn btn-primary" data-action="ranking" ${players.length < 32 ? "disabled" : ""}>${icon("list-numbers", "bold")} Enter the Selection Round ranking</button>
       </div>
     </div>
-    ${players.length < 32 ? notice(`You have ${players.length} player accounts. Add at least 32 on the People tab to run the draw.`) : ""}
+    ${players.length < 32 ? notice(`You have ${players.length} player accounts. Add an account for each of the 32 qualifiers on the People tab first.`) : ""}
     ${hasFixtures ? notice("Group fixtures already exist. If you change the groups, generate the fixtures again on the Matches tab.") : ""}
     <div data-err></div>
     <div class="grid sm-2 xl-4 tight">${groups}</div>
@@ -786,19 +814,73 @@ function testPanel() {
   </section>`;
 }
 
+// The Selection Round result, typed or pasted in rank order. Names are
+// matched to player accounts; each rank then has a box to check or change.
+function rankingModal() {
+  const players = playerPool();
+  const byRank = Array.from({ length: 32 }, (_, i) => store.groupPlayers.find((gp) => rankOf(gp.player_id) === i + 1)?.player_id ?? "");
+  const options = (selected) => `<option value="">Choose</option>${players.map((p) => `<option value="${p.id}" ${p.id === selected ? "selected" : ""}>${esc(p.full_name)}</option>`).join("")}`;
+  const group = (rank) => String.fromCharCode(64 + ((rank - 1) % 8) + 1);
+  const d = openModal(
+    "Selection Round ranking",
+    `<p class="muted">Enter the top 32 from the Lichess Selection Round, best first. Rank 1 goes to Group A, 2 to Group B and so on to 8 in Group H, then 9 back in Group A. This replaces the current groups.</p>
+     <div class="field mt-4"><label for="rk-paste">Paste the names (optional)</label><textarea class="input" id="rk-paste" rows="4" placeholder="One name per line, rank 1 first. Lichess usernames work if they match a name on the People tab."></textarea>
+       <div class="row gap-2 mt-2"><button class="btn btn-sm" type="button" data-fill>${icon("magic-wand", "bold")} Fill the ranks below</button><span class="xs muted" data-fill-msg></span></div></div>
+     <div class="rank-grid mt-4">${byRank
+       .map((id, i) => `<label class="rank-row"><span class="num strong">${i + 1}</span><span class="xs dim">${group(i + 1)}</span><select class="input sm" data-rank="${i + 1}">${options(id)}</select></label>`)
+       .join("")}</div>
+     <div data-err class="mt-4"></div>
+     <div class="modal-actions"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" data-confirm>${icon("check", "bold")} Place into groups</button></div>`,
+    { wide: true },
+  );
+  const selects = [...d.querySelectorAll("[data-rank]")];
+  const err = d.querySelector("[data-err]");
+  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  d.querySelector("[data-fill]").addEventListener("click", () => {
+    const lines = d.querySelector("#rk-paste").value.split(/\r?\n/).map((l) => l.replace(/^\s*\d+[.)\s-]*/, "").trim()).filter(Boolean);
+    const missing = [];
+    lines.slice(0, 32).forEach((line, i) => {
+      const p = players.find((x) => norm(x.full_name) === norm(line)) ?? players.find((x) => norm(x.full_name).startsWith(norm(line)));
+      if (p) selects[i].value = p.id;
+      else missing.push(`${i + 1}. ${line}`);
+    });
+    d.querySelector("[data-fill-msg]").textContent = missing.length ? `No account found for: ${missing.join(", ")}` : `Filled ${Math.min(lines.length, 32)} ranks.`;
+  });
+  const btn = d.querySelector("[data-confirm]");
+  btn.addEventListener("click", () => {
+    const ids = selects.map((s) => s.value);
+    const empty = ids.map((id, i) => (id ? null : i + 1)).filter(Boolean);
+    if (empty.length) {
+      err.innerHTML = notice(`Choose a player for rank ${empty.join(", ")}.`, "error");
+      return;
+    }
+    const twice = ids.find((id, i) => ids.indexOf(id) !== i);
+    if (twice) {
+      err.innerHTML = notice(`${esc(store.profileById.get(twice)?.full_name)} is in the list twice.`, "error");
+      return;
+    }
+    withBusy(btn, async () => {
+      await placeByRank(store.tournament.id, store.groups, ids.map((id) => store.profileById.get(id)));
+      d.close();
+      await refresh();
+    }, err);
+  });
+}
+
+// For rehearsals: the ticked players in a random Selection Round order.
 function drawModal() {
   const players = playerPool();
   const placed = new Set(store.groupPlayers.map((gp) => gp.player_id));
   const preselected = new Set(placed.size === 32 ? placed : players.slice(0, 32).map((p) => p.id));
   const d = openModal(
-    "Random draw",
-    `<p class="muted">The 32 players you tick are shuffled and dealt into the eight groups, four to a group. Every player has the same chance of landing anywhere. This replaces the current groups.</p>
+    "Random order",
+    `<p class="muted">For rehearsals. The 32 players you tick are given a random Selection Round rank and placed into the groups by it. This replaces the current groups.</p>
      <p class="small mt-4"><span class="num strong" data-count></span><span class="muted"> of 32 players selected</span></p>
      <div class="pick-list">${players
        .map((p) => `<label><input type="checkbox" value="${p.id}" ${preselected.has(p.id) ? "checked" : ""}><span class="grow truncate">${esc(p.full_name)}</span>${p.school ? `<span class="xs dim truncate">${esc(p.school)}</span>` : ""}</label>`)
        .join("")}</div>
      <div data-err class="mt-4"></div>
-     <div class="modal-actions"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" data-confirm>${icon("shuffle", "bold")} Run the draw</button></div>`,
+     <div class="modal-actions"><button class="btn" data-close>Cancel</button><button class="btn btn-primary" data-confirm>${icon("shuffle", "bold")} Place in a random order</button></div>`,
     { wide: true },
   );
   const boxes = [...d.querySelectorAll("input[type=checkbox]")];
@@ -829,8 +911,14 @@ function matchesTab() {
   const groupGames = store.matches.filter((m) => m.stage === "group");
   const round = ROUNDS.find((r) => r.key === ui.round);
   const roundMatches = store.matches.filter(round.test).sort(sortByTime);
-  const first = roundMatches.find((m) => m.scheduled_at)?.scheduled_at ?? null;
-  const pending = roundMatches.filter((m) => m.status === "scheduled").length;
+  // A knockout round is scheduled one game number at a time (all the game
+  // 1s, then all the game 2s); tiebreak games schedule themselves.
+  const ko = KNOCKOUT_STAGES.includes(round.key);
+  const gameNos = ko ? [...new Set(roundMatches.filter((m) => m.game_kind === "game").map((m) => m.game_no))].sort((a, b) => a - b) : [];
+  ui.gameNo = gameNos.includes(ui.gameNo) ? ui.gameNo : gameNos.find((n) => roundMatches.some((m) => m.game_no === n && m.game_kind === "game" && m.status === "scheduled")) ?? gameNos[0] ?? 1;
+  const target = ko ? roundMatches.filter((m) => m.game_kind === "game" && m.game_no === ui.gameNo) : roundMatches;
+  const first = target.find((m) => m.scheduled_at)?.scheduled_at ?? null;
+  const pending = target.filter((m) => m.status === "scheduled").length;
 
   const chips = ROUNDS.map(
     (r) => `<button class="chip${r.key === ui.round ? " active" : ""}" data-action="round" data-round="${r.key}">${r.label}<span class="count">${store.matches.filter(r.test).length}</span></button>`,
@@ -855,8 +943,8 @@ function matchesTab() {
       <div>
         <h2 class="section-title">Group fixtures</h2>
         <p class="small muted mt-1">${groupGames.length
-          ? `${groupGames.length} games made: every player meets the other three in their group over three rounds.`
-          : "Makes 48 games: each group plays a round robin over three rounds."}</p>
+          ? `${groupGames.length} games made: every player meets the other three in their group twice, once with each colour, over six rounds.`
+          : `Makes ${GROUP_GAMES} games at ${clockLabel(formatOf("group"))}: a double round robin in each group over six rounds. Rounds 4 to 6 repeat rounds 1 to 3 with the colours reversed.`}</p>
       </div>
       <button class="btn ${groupGames.length ? "" : "btn-primary"}" data-action="generate-fixtures" ${store.groupPlayers.length !== 32 ? "disabled" : ""}>${groupGames.length ? "Generate again" : "Generate fixtures"}</button>
     </section>
@@ -875,22 +963,27 @@ function matchesTab() {
         : roundMatches.length
         ? `<div class="panel pad split" style="align-items:flex-end">
             <div class="field grow">
-              <label for="round-time">Start time for all of ${round.label.toLowerCase()}</label>
-              <input id="round-time" type="datetime-local" class="input" style="max-width:20rem" value="${toLocalInput(first)}">
+              <label for="round-time">Start time for ${ko ? `game ${ui.gameNo} of every ${round.label.toLowerCase().replace(/s$/, "")} series` : `all of ${round.label.toLowerCase()}`}</label>
+              <div class="row gap-2 wrap">
+                ${gameNos.length > 1 ? `<select class="input" id="round-game" data-action-change="round-game" style="max-width:9rem">${gameNos.map((n) => `<option value="${n}" ${n === ui.gameNo ? "selected" : ""}>Game ${n}</option>`).join("")}</select>` : ""}
+                <input id="round-time" type="datetime-local" class="input" style="max-width:20rem" value="${toLocalInput(first)}">
+              </div>
               <p class="hint">Applies to the ${pending} games not yet started. Set individual times with the edit button.</p>
             </div>
             <button class="btn btn-primary" data-action="schedule-round">${icon("calendar-blank")} Schedule round</button>
           </div>
           <div class="panel pad-sm mt-4">${rows}</div>`
-        : emptyState(`No ${round.label.toLowerCase()} games yet`, round.key.startsWith("g") ? "Generate the group fixtures above." : "These games appear when you generate the knockout bracket.")}
+        : emptyState(`No ${round.label.toLowerCase()} games yet`, round.key.startsWith("g") ? "Generate the group fixtures above." : "A series' games appear as soon as both of its players are known. Tiebreak games are added when a series ends level.")}
     </section>
   </div>`;
 }
 
-// "Quarterfinal 3", "Final", "Semifinal Armageddon".
+// "Quarterfinal 3 · Game 2", "Final · Game 4", "Semifinal 1 · Tiebreak".
 function knockoutLabel(m) {
   if (m.tiebreak_of) return `${STAGE_LABEL[m.stage]} Armageddon`;
-  return m.stage === "final" || m.stage === "third" ? STAGE_LABEL[m.stage] : `${STAGE_LABEL[m.stage]} ${m.bracket_slot}`;
+  const base = m.stage === "final" || m.stage === "third" ? STAGE_LABEL[m.stage] : `${STAGE_LABEL[m.stage]} ${m.bracket_slot}`;
+  const game = m.game_kind === "tiebreak" ? "Tiebreak" : m.game_kind === "decider" ? "Decider" : m.game_no ? `Game ${m.game_no}` : "";
+  return game ? `${base} · ${game}` : base;
 }
 
 function matchModal(m) {
@@ -923,8 +1016,9 @@ function matchModal(m) {
           <option value="1-0" ${m.result === "1-0" ? "selected" : ""}>White wins (1 - 0)</option>
           <option value="0-1" ${m.result === "0-1" ? "selected" : ""}>Black wins (0 - 1)</option>
           <option value="1/2-1/2" ${m.result === "1/2-1/2" ? "selected" : ""}>Draw (½ - ½)</option>
+          <option value="0-0" ${m.result === "0-0" ? "selected" : ""}>Both forfeit (0 - 0)</option>
         </select>
-        <p class="hint">Use this for games played over the board, or to correct a result. Standings and the bracket update automatically.</p>
+        <p class="hint">Use this for a ruling, a game played elsewhere, or to correct a result. Standings, series scores, tiebreak games and the bracket follow automatically.${m.game_kind === "decider" && m.draw_winner_id ? ` In this decider a draw sends ${nameOf(m.draw_winner_id)} through.` : ""}</p>
       </div>
       <div class="field">
         <label for="mm-arbiter">Arbiter</label>
@@ -932,13 +1026,7 @@ function matchModal(m) {
         <p class="hint">Who on the organising team watches this game.</p>
       </div>
       <a class="btn btn-sm" href="play.html?id=${m.id}" style="align-self:flex-start">${icon("crown-simple", "bold")} Open in the Arena</a>
-      ${knockout && !m.tiebreak_of
-        ? `<div class="field" data-tiebreak>
-            <label for="mm-winner">Tiebreak winner</label>
-            <select class="input" id="mm-winner" name="winner"><option value="">Choose a player</option>${[m.white_id, m.black_id].filter(Boolean).map((id) => `<option value="${id}" ${id === m.winner_id ? "selected" : ""}>${nameOf(id)}</option>`).join("")}</select>
-            <p class="hint">Knockout games need someone to go through. ${store.tournament?.auto_tiebreak ? "Leave it empty and an Armageddon game is created automatically, or pick the winner of a tiebreak played elsewhere." : "Pick who won the tiebreak."}</p>
-          </div>`
-        : ""}
+      ${knockout && m.series_id ? `<p class="hint">${icon("info")} The series decides who goes through. To overrule it, set the series winner on the Knockout tab.</p>` : ""}
       <div data-err></div>
       <div class="row between wrap gap-2" style="border-top:1px solid var(--line);padding-top:1.25rem">
         <span class="row gap-2">
@@ -951,10 +1039,6 @@ function matchModal(m) {
   );
   const form = d.querySelector("form");
   const err = d.querySelector("[data-err]");
-  const tiebreak = d.querySelector("[data-tiebreak]");
-  const syncTiebreak = () => tiebreak && (tiebreak.hidden = form.result.value !== "1/2-1/2");
-  form.result.addEventListener("change", syncTiebreak);
-  syncTiebreak();
   d.querySelector("[data-swap]").addEventListener("click", () => {
     [form.white.value, form.black.value] = [form.black.value, form.white.value];
   });
@@ -986,17 +1070,12 @@ function matchModal(m) {
       err.innerHTML = notice("A player can't play themselves.", "error");
       return;
     }
-    if (knockout && !m.tiebreak_of && result === "1/2-1/2" && !form.winner.value && !store.tournament?.auto_tiebreak) {
-      err.innerHTML = notice("A drawn knockout game needs a tiebreak winner.", "error");
-      return;
-    }
     const patch = started ? {} : { scheduled_at: fromLocalInput(form.when.value), white_id: white || null, black_id: black || null };
     if (result !== (m.result ?? "")) {
       patch.result = result || null;
       patch.status = result ? "completed" : m.move_count ? "live" : "scheduled";
       patch.end_reason = result ? "result recorded by staff" : null;
     }
-    if (knockout && result === "1/2-1/2" && form.winner?.value) patch.winner_id = form.winner.value;
     if ((form.arbiter.value || null) !== (m.arbiter_id ?? null)) patch.arbiter_id = form.arbiter.value || null;
     await withBusy(form.querySelector("[type=submit]"), async () => {
       if (Object.keys(patch).length) await updateMatch(m.id, patch);
@@ -1022,7 +1101,7 @@ function friendlyModal() {
         <button type="button" class="icon-btn" data-swap aria-label="Swap colours" style="margin-bottom:0.25rem">${icon("arrows-left-right")}</button>
         <div class="field"><label for="fm-black">Black</label><select class="input" id="fm-black" name="black" required><option value="">Choose</option>${options}</select></div>
       </div>
-      <div class="field"><label for="fm-when">Start time</label><input class="input" id="fm-when" name="when" type="datetime-local" required value="${toLocalInput(soon.toISOString())}"><p class="hint">Both players get an update now and a reminder 10 minutes before.</p></div>
+      <div class="field"><label for="fm-when">Start time</label><input class="input" id="fm-when" name="when" type="datetime-local" required value="${toLocalInput(soon.toISOString())}"><p class="hint">Both players get an update now and a reminder 15 minutes before.</p></div>
       <div class="two-col">
         <div class="field"><label for="fm-min">Minutes each</label><input class="input" id="fm-min" name="minutes" type="number" min="1" max="180" value="${t?.time_control_minutes ?? 10}"></div>
         <div class="field"><label for="fm-inc">Increment (s)</label><input class="input" id="fm-inc" name="increment" type="number" min="0" max="60" value="${t?.increment_seconds ?? 5}"></div>
@@ -1064,25 +1143,49 @@ function knockoutTab() {
   if (!store.tournament) return emptyState("No edition yet", "Create the tournament first.");
   const groupGames = store.matches.filter((m) => m.stage === "group");
   const finished = groupGames.filter((m) => m.status === "completed").length;
-  const existing = bracketGames(store.matches).filter(isKnockout);
-  const started = existing.some((m) => m.status !== "scheduled" || m.move_count > 0);
+  const existing = store.ties;
+  const started = store.matches.some((m) => isKnockout(m) && m.series_id && (m.status !== "scheduled" || m.move_count > 0));
   const q = qualifiers(store.groups, store.groupPlayers, store.matches, store.profileById);
-  const name = (id) => (id ? esc(store.profileById.get(id)?.full_name ?? "Unknown") : `<span class="dim">To be decided</span>`);
+  const name = (id) => (id ? `${rankOf(id) ? `<span class="num xs dim">${rankOf(id)}</span> ` : ""}${esc(store.profileById.get(id)?.full_name ?? "Unknown")}` : `<span class="dim">To be decided</span>`);
 
   const cards = R16_PAIRINGS.map(([ga, pa, gb, pb], i) => {
     const m = existing.find((x) => x.stage === "r16" && x.bracket_slot === i + 1);
     const white = m ? m.white_id : q.get(ga)?.[pa - 1];
     const black = m ? m.black_id : q.get(gb)?.[pb - 1];
-    return `<div class="panel small" style="padding:1rem"><p class="xs dim">Match ${i + 1}: ${ga}${pa} vs ${gb}${pb}</p><p class="truncate mt-2" style="font-weight:500">${name(white)}</p><p class="truncate" style="font-weight:500">${name(black)}</p></div>`;
+    return `<div class="panel small" style="padding:1rem"><p class="xs dim">Match ${i + 1}: ${ga}${pa} vs ${gb}${pb} · to QF ${Math.floor(i / 2) + 1}</p><p class="truncate mt-2" style="font-weight:500">${name(white)}</p><p class="truncate" style="font-weight:500">${name(black)}</p></div>`;
   }).join("");
+
+  // Every series: its score, its games, and an override for the organisers.
+  const order = (t) => KNOCKOUT_STAGES.indexOf(t.stage) * 10 + t.bracket_slot;
+  const tieRow = (t) => {
+    const s = seriesState(t);
+    const label = t.stage === "final" || t.stage === "third" ? STAGE_LABEL[t.stage] : `${STAGE_LABEL[t.stage]} ${t.bracket_slot}`;
+    const games = s.games
+      .map((g) => `<button class="chip${g.status === "completed" ? " active" : ""}" data-action="edit-match" data-id="${g.id}" title="${esc(knockoutLabel(g))}">${g.game_kind === "game" ? `G${g.game_no}` : g.game_kind === "tiebreak" ? "TB" : "Dec"} ${g.result ? esc(g.result.replace("1/2-1/2", "½-½")) : g.scheduled_at ? formatTime(g.scheduled_at) : "unscheduled"}</button>`)
+      .join("");
+    const state = t.winner_id
+      ? `<span class="badge">${esc(store.profileById.get(t.winner_id)?.full_name ?? "")} through</span>`
+      : t.white_id && t.black_id
+        ? `<button class="btn btn-ghost btn-sm" data-action="tie-winner" data-id="${t.id}">Set winner</button>`
+        : "";
+    return `<div class="admin-row" style="align-items:flex-start">
+      <div class="grow">
+        <span class="xs dim" style="display:block;margin-bottom:0.25rem">${label} · ${clockLabel(formatOf(t.stage))}</span>
+        <span class="vs">${name(t.white_id)} <span class="num strong">${t.white_id && t.black_id ? `${formatPoints(s.a)} - ${formatPoints(s.b)}` : ""}</span> ${name(t.black_id)}</span>
+        ${games ? `<div class="chips mt-2" style="margin-bottom:0">${games}</div>` : ""}
+      </div>
+      ${state}
+    </div>`;
+  };
+  const series = existing.slice().sort((a, b) => order(a) - order(b)).map(tieRow).join("");
 
   return `<div class="stack gap-6">
     <section class="panel pad split">
       <div>
         <h2 class="section-title">Knockout bracket</h2>
-        <p class="small muted mt-1" style="max-width:60ch">${existing.length
-          ? "The bracket is set. Winners move into the next round on their own as games finish; drawn games get an Armageddon tiebreak. The semifinal losers meet in the third-place match."
-          : `Group stage: ${finished} of ${groupGames.length || 48} games finished. The top two in each group go through. ${TIEBREAK_NOTE}${store.tournament.auto_knockout ? " The bracket builds itself when the last group game ends." : ""}`}</p>
+        <p class="small muted mt-1" style="max-width:66ch">${existing.length
+          ? "The bracket is set. Each series' games appear once both players are known: schedule them on the Matches tab. A level series gets its tiebreak game (and decider) automatically, and winners move on by themselves. The semifinal losers play for third place."
+          : `Group stage: ${finished} of ${groupGames.length || GROUP_GAMES} games finished. The top two in each group go through. ${TIEBREAK_NOTE}${store.tournament.auto_knockout ? " The bracket builds itself when the last group game ends." : ""}`}</p>
       </div>
       <div class="row gap-2">
         ${existing.length ? `<a class="btn" href="bracket.html">View bracket</a>` : ""}
@@ -1091,11 +1194,36 @@ function knockoutTab() {
     </section>
     ${started ? notice("Knockout games have started, so the bracket is locked. Fix individual games on the Matches tab.") : ""}
     <div data-err></div>
+    ${series ? `<section><h3 class="small strong muted mb-3">Series</h3><div class="panel pad-sm">${series}</div></section>` : ""}
     <section>
       <h3 class="small strong muted mb-3">${existing.length ? "Round of 16 as generated" : "Round of 16 if the groups ended now"}</h3>
       <div class="grid sm-2 xl-4 tight">${cards}</div>
     </section>
   </div>`;
+}
+
+// The organisers decide a series: tiebreaks switched off, or a ruling.
+function tieWinnerModal(tie) {
+  const s = seriesState(tie);
+  const player = (id) => `<label class="row gap-3" style="cursor:pointer;padding:0.4rem 0"><input type="radio" name="winner" value="${id}" style="accent-color:#d9dce2"><span>${esc(store.profileById.get(id)?.full_name ?? "")}</span></label>`;
+  const d = openModal(
+    "Set the series winner",
+    `<form class="stack gap-4"><p class="muted">Series score ${formatPoints(s.a)} - ${formatPoints(s.b)}. The winner moves into the next round straight away${tie.stage === "sf" ? ", and the other player into the third-place series" : ""}. Unplayed games in this series stay as they are.</p>
+      <div>${player(tie.white_id)}${player(tie.black_id)}</div>
+      <div data-err></div>
+      <div class="modal-actions"><button class="btn" type="button" data-close>Cancel</button><button class="btn btn-primary" type="submit">Confirm</button></div></form>`,
+  );
+  const form = d.querySelector("form");
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const winner = form.winner.value;
+    if (!winner) return;
+    withBusy(form.querySelector("[type=submit]"), async () => {
+      await setTieWinner(tie.id, winner);
+      d.close();
+      await refresh();
+    }, d.querySelector("[data-err]"));
+  });
 }
 
 // ---------------------------------------------------------------- organising team tab
@@ -1414,12 +1542,12 @@ function standardChecklist() {
   return [
     ["Open registration and share the link", "Registrations tab: paste the Google Form links."],
     ["Review registrations and add the 32 players", "Check the Google Form answers, then create the accounts on the People tab."],
-    ["Run the group draw", "Groups tab: a random draw deals the players into groups A to H."],
-    ["Generate the group fixtures and schedule the rounds", "Matches tab. 48 games over three rounds."],
+    ["Enter the Selection Round ranking", "After the Lichess Swiss: Groups tab, Enter the Selection Round ranking. The top 32 are placed into groups A to H by rank."],
+    ["Generate the group fixtures and schedule the rounds", `Matches tab. ${GROUP_GAMES} games over six rounds (double round robin).`],
     ["Put an arbiter on every game", "Use Share out evenly below, then swap where needed."],
     ["Rehearse with test bots, then remove the test data", "Groups tab, Test with bots."],
     ["Message the players with the start time and the rules", "Tournament tab, Message everyone."],
-    ["Run the knockout", "Round of 16 to the final, Armageddon tiebreaks and the third-place match: 64 games in all."],
+    ["Run the knockout", `Schedule each series' games as players come through: two-game series to the semifinals and for third place, a four-game final. ${TOTAL_GAMES} games in all, plus any tiebreaks.`],
     ["Announce the champion and close the edition", "Set the edition to Complete."],
   ];
 }
@@ -1655,21 +1783,26 @@ app.addEventListener("click", async (e) => {
       }, err);
     case "draw":
       return drawModal();
+    case "ranking":
+      return rankingModal();
+    case "tie-winner":
+      return tieWinnerModal(store.ties.find((x) => x.id === el.dataset.id));
     case "round":
       ui.round = el.dataset.round;
       return draw();
     case "generate-fixtures":
       if (store.matches.some((m) => m.stage === "group") && !confirm("This deletes all group games, including any results, and makes them again from the current groups. Continue?")) return;
       return withBusy(el, async () => {
-        await generateGroupFixtures(t.id, store.groups, store.groupPlayers);
+        await generateGroupFixtures(t, store.groups, store.groupPlayers);
         await refresh();
       }, err);
     case "schedule-round": {
       const value = app.querySelector("#round-time").value;
       if (!value) return;
       const round = ROUNDS.find((r) => r.key === ui.round);
+      const ko = KNOCKOUT_STAGES.includes(round.key);
       return withBusy(el, async () => {
-        await scheduleRound(store.matches.filter(round.test), fromLocalInput(value));
+        await scheduleRound(store.matches.filter((m) => round.test(m) && (!ko || (m.game_kind === "game" && m.game_no === ui.gameNo))), fromLocalInput(value));
         await refresh();
       }, err);
     }
@@ -1679,7 +1812,7 @@ app.addEventListener("click", async (e) => {
       const groupGames = store.matches.filter((m) => m.stage === "group");
       const finished = groupGames.filter((m) => m.status === "completed").length;
       const warn = finished < groupGames.length ? `Only ${finished} of ${groupGames.length} group games are finished, so the tables may still change. ` : "";
-      const replace = bracketGames(store.matches).some(isKnockout) ? "This replaces the current bracket. " : "";
+      const replace = store.ties.length ? "This replaces the current bracket. " : "";
       if ((warn || replace) && !confirm(`${warn}${replace}Generate the bracket now?`)) return;
       return withBusy(el, async () => {
         await generateKnockout(t.id);
@@ -1707,6 +1840,10 @@ app.addEventListener("change", async (e) => {
   if (arbiter) {
     await withBusy(null, () => setArbiter(arbiter.dataset.arbiter, arbiter.value), app.querySelector("[data-err]"));
     arbiter.blur();
+    return draw();
+  }
+  if (e.target.id === "round-game") {
+    ui.gameNo = Number(e.target.value);
     return draw();
   }
   const slot = e.target.closest("[data-slot]");
@@ -1783,12 +1920,32 @@ app.addEventListener("submit", async (e) => {
   e.preventDefault();
   const msg = form.querySelector("[data-msg]");
   await withBusy(form.querySelector("[type=submit]"), async () => {
-    await updateTournament(store.tournament.id, {
+    const format = {};
+    for (const [key] of CLOCK_ROWS) {
+      const minutes = Number(form[`ck-${key}-m`].value);
+      const increment = Number(form[`ck-${key}-i`].value);
+      if (!(minutes >= 1 && minutes <= 180 && increment >= 0 && increment <= 60)) throw new Error("Each clock needs 1 to 180 minutes and 0 to 60 seconds.");
+      format[key] = { ...formatOf(key), minutes, increment };
+    }
+    const t = store.tournament;
+    await updateTournament(t.id, {
       name: form.name.value.trim(),
       time_control_minutes: Number(form.minutes.value),
       increment_seconds: Number(form.increment.value),
       status: form.status.value,
+      format,
     });
+    // Games not started yet take the new clocks.
+    for (const [key] of CLOCK_ROWS) {
+      const f = format[key];
+      const clock = { white_base_ms: f.minutes * 60_000, black_base_ms: f.minutes * 60_000, increment_ms: f.increment * 1000 };
+      let q = supabase.from("matches").update(clock).eq("tournament_id", t.id).eq("status", "scheduled").eq("move_count", 0);
+      if (key === "group") q = q.eq("stage", "group");
+      else if (key === "tiebreak") q = q.in("game_kind", ["tiebreak", "decider"]);
+      else q = q.eq("stage", key).eq("game_kind", "game");
+      const { error } = await q;
+      if (error) throw new Error(error.message);
+    }
     await refresh();
     const m = app.querySelector("[data-msg]");
     if (m) m.textContent = "Saved.";

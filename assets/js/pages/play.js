@@ -10,7 +10,7 @@ import { callFunction, supabase } from "../supabase.js";
 import {
   store, loadAll, subscribe, upsertMatch, effectiveStatus, matchContext, involves, sortByTime,
   baseClocks, timeControlLabel,
-  isKnockout,
+  tieOf, seriesState, seriesGames, firstMoveDeadline,
 } from "../store.js";
 import { countdownHtml, formatClock, formatDateTime, formatTime, serverNow, startCountdowns, syncServerClock } from "../time.js";
 import { botTag, emptyState, esc, icon, liveTag, mountShell, notice, openModal, playerHtml, resultText, sectionHead } from "../ui.js";
@@ -18,6 +18,7 @@ import { Chess, Chessground, gameFromMatch, legalDests, mountMiniBoards } from "
 import { play as sfx, setSoundEnabled, soundForMove } from "../arena/sounds.js";
 import { analyseGame, classify, evalLabel, winPercent } from "../arena/engine.js";
 import { sendMessage } from "../ops.js";
+import { formatPoints } from "../standings.js";
 
 // ---------------------------------------------------------------- state
 // Declared before the first await so every function below can use it.
@@ -40,6 +41,7 @@ const REASON = {
   agreement: "agreement",
   timeout: "time",
   "timeout vs insufficient material": "time against insufficient material",
+  forfeit: "forfeit",
 };
 
 // How a game ended, as plain text: "by checkmate", "on time". A result the
@@ -49,6 +51,7 @@ function endPhrase(m) {
   if (!r) return "";
   if (r === "timeout") return "on time";
   if (r === "timeout vs insufficient material") return "out of time, but the opponent can't mate";
+  if (r === "double forfeit") return "neither player made a move in time";
   if (REASON[r]) return `by ${REASON[r]}`;
   if (r === "result recorded by staff") return "result entered by the organisers";
   if (r === "test simulation") return "test simulation";
@@ -76,6 +79,7 @@ const EVENT_TEXT = {
   takeback: "took back a move",
   adjudicated: "adjudicated the game",
   game_over: "game over",
+  colour_chosen: "chose the colours",
 };
 
 const S = {
@@ -227,6 +231,14 @@ function lobbyHtml() {
 
 async function startGame() {
   let m = store.matches.find((x) => x.id === matchId);
+  // A knockout tie isn't played itself: open the game its series is on.
+  const tie = !m && store.ties.find((x) => x.id === matchId);
+  if (tie) {
+    const games = seriesGames(tie);
+    const target = games.find((g) => g.status !== "completed") ?? games[games.length - 1];
+    location.replace(target ? `play.html?id=${target.id}` : "bracket.html");
+    return;
+  }
   if (!m) {
     // A game from an earlier edition: read it directly.
     const { data } = await supabase.from("matches").select("*").eq("id", matchId).maybeSingle();
@@ -321,19 +333,46 @@ function orientation() {
   return S.flipped ? (base === "white" ? "black" : "white") : base;
 }
 
+// No clock runs until both players have made their first move; until then
+// the side to move has a first-move deadline instead (firstMoveDeadline).
 function clocks() {
   const m = S.match;
   const base = baseClocks(m);
   const now = serverNow();
-  if (m.status === "scheduled") {
-    const started = m.scheduled_at && status() === "live" ? now - new Date(m.scheduled_at).getTime() : 0;
-    return { white: base.white - started, black: base.black };
-  }
   const w = m.white_ms ?? base.white;
   const b = m.black_ms ?? base.black;
-  if (m.status === "completed" || !m.clock_started_at || m.paused_at) return { white: w, black: b };
+  if (m.status !== "live" || (m.move_count ?? 0) < 2 || !m.clock_started_at || m.paused_at) return { white: w, black: b };
   const elapsed = now - new Date(m.clock_started_at).getTime();
   return turnColour() === "white" ? { white: w - elapsed, black: b } : { white: w, black: b - elapsed };
+}
+
+// Time left for the first move, or null once both players have moved.
+function deadlineLeft() {
+  const d = status() === "live" ? firstMoveDeadline(S.match) : null;
+  return d === null ? null : d - serverNow();
+}
+function deadlineText() {
+  const left = deadlineLeft();
+  if (left === null) return "";
+  const s = Math.max(0, Math.ceil(left / 1000));
+  const who = turnColour() === myColour() ? "You have" : `${turnColour() === "white" ? "White" : "Black"} has`;
+  return `${who} ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} to make the first move`;
+}
+
+// The knockout series this game belongs to, as one line: "Series 1-0".
+function seriesNote(m) {
+  const tie = tieOf(m);
+  if (!tie) return "";
+  const s = seriesState(tie);
+  const name = (id) => esc(nameOf(id).split(" ")[0]);
+  return `${name(tie.white_id)} ${formatPoints(s.a)}-${formatPoints(s.b)} ${name(tie.black_id)}`;
+}
+
+// The game after this one in its series, once it exists.
+function nextInSeries() {
+  const m = S.match;
+  if (!m.series_id) return null;
+  return seriesGames(tieOf(m) ?? { id: m.series_id }).find((g) => g.id !== m.id && g.status !== "completed") ?? null;
 }
 
 // Pieces each side has taken, and the material balance, for a position.
@@ -509,6 +548,7 @@ function renderHead() {
     <div class="title">${st === "live" ? liveTag() : ""}<h1>${esc(matchContext(m))}</h1>${badge}</div>
     <div class="meta">
       <span>${icon("timer")} ${timeControlLabel(m)}</span>
+      ${seriesNote(m) ? `<span>${icon("swap")} ${seriesNote(m)}</span>` : ""}
       ${m.scheduled_at ? `<span>${icon("calendar-blank")} ${formatDateTime(m.scheduled_at)}</span>` : ""}
       <span>${icon("users")} <b data-viewers>${S.viewers}</b> watching</span>
     </div>`;
@@ -544,7 +584,7 @@ function pcardHtml(colour) {
   }
   return `<div class="avatar ${colour}" aria-hidden="true">${esc(initials(name))}${pres ? `<span class="presence ${pres}" title="${pres === "on" ? "Online" : pres === "away" ? "Tab hidden" : "Not here"}"></span>` : ""}</div>
     <div class="who">
-      <div class="line1"><span class="pname">${esc(name)}</span>${p?.is_bot ? botTag() : ""}${id === S.profile.id ? `<span class="you">You</span>` : ""}${m.draw_odds && colour === "black" ? `<span class="odds">Draw odds</span>` : ""}</div>
+      <div class="line1"><span class="pname">${esc(name)}</span>${p?.is_bot ? botTag() : ""}${id === S.profile.id ? `<span class="you">You</span>` : ""}${(m.draw_odds && colour === "black") || (id && m.draw_winner_id === id) ? `<span class="odds" title="A draw is enough to go through">Draw odds</span>` : ""}</div>
       <div class="line2"><span class="captured">${caps}</span>${lead > 0 ? `<span class="material">+${lead}</span>` : ""}${note}</div>
     </div>
     <div class="aclock" data-clock="${colour}" role="timer" aria-label="${colour} clock"><i class="ph-bold ph-hourglass-medium"></i><span></span></div>`;
@@ -588,8 +628,11 @@ function tickClocks() {
   maybeBotMove();
 
   // A player's or the arbiter's screen tells the server when a flag falls
-  // (the server also checks every 20 seconds by itself).
-  if (running && (mine || staff()) && c[turnColour()] <= 0 && !S.busy && Date.now() - S.lastFlagAt > 3000) {
+  // or a first-move deadline passes (the server also checks every 20
+  // seconds by itself).
+  const left = deadlineLeft();
+  const over = left === null ? (S.match.move_count ?? 0) >= 2 && c[turnColour()] <= 0 : left <= 0;
+  if (running && (mine || staff()) && over && !S.busy && Date.now() - S.lastFlagAt > 3000) {
     S.lastFlagAt = Date.now();
     act("flag", {}, { quiet: true });
   }
@@ -615,10 +658,12 @@ function maybeBotMove() {
 function tickSecond() {
   if (!S.match) return;
   const overlay = document.getElementById("overlay");
-  if (overlay.dataset.kind === "countdown" && status() === "live") update();
+  if ((overlay.dataset.kind === "countdown" || overlay.dataset.kind === "choose") && status() === "live") update();
   if (status() === "live" && S.presence) renderPlayers();
   const st = document.querySelector("[data-starts]");
   if (st) st.textContent = startsIn();
+  const dl = document.querySelector("[data-deadline]");
+  if (dl) dl.textContent = deadlineText();
 }
 
 function startsIn() {
@@ -642,6 +687,19 @@ function renderOverlay() {
   if (!m.white_id || !m.black_id) {
     kind = "tbd";
     html = `<div class="lobby-card"><span class="eyebrow">Waiting</span><h2>Players to be decided</h2><p class="muted mt-4">This game's players come from earlier rounds.</p></div>`;
+  } else if (m.choose_by && m.status !== "completed" && !m.move_count && status() === "scheduled") {
+    // A knockout decider: the lower-ranked player picks the colours first.
+    kind = "choose";
+    const chooser = m.choose_by === S.profile.id;
+    const better = nameOf(m.draw_winner_id);
+    html = `<div class="lobby-card">
+        <span class="eyebrow">${esc(matchContext(m))}</span>
+        <h2>${chooser ? "Choose your colour" : `${esc(nameOf(m.choose_by).split(" ")[0])} is choosing colours`}</h2>
+        <p class="muted mt-4">${chooser ? `You are the lower-ranked player, so you pick. A draw sends ${esc(better)} through, so you need to win.` : `The lower-ranked player picks the colours for the decider. A draw sends ${esc(better)} through.`}</p>
+        ${chooser ? `<div class="row gap-3 mt-6" style="justify-content:center"><button class="btn btn-primary" data-choose="white">${icon("circle", "fill")} Play White</button><button class="btn" data-choose="black">${icon("circle", "bold")} Play Black</button></div>` : ""}
+        ${m.scheduled_at ? `<div class="mt-6">${countdownHtml(m.scheduled_at, { big: true })}</div>` : ""}
+        <p class="small dim mt-4">${timeControlLabel(m)}. ${chooser ? "If you don't choose before the start, you play White." : `${esc(nameOf(m.choose_by).split(" ")[0])} plays White unless they choose Black before the start.`}</p>
+      </div>`;
   } else if (status() === "scheduled") {
     kind = "countdown";
     const ready = (id) => {
@@ -655,7 +713,7 @@ function renderOverlay() {
           <h2>${mine ? `You play ${mine}` : "The board unlocks in"}</h2>
           <div class="mt-6">${countdownHtml(m.scheduled_at, { big: true })}</div>
           <div class="ready-row">${ready(m.white_id)}${ready(m.black_id)}</div>
-          <p class="small dim mt-4">${timeControlLabel(m)} · starts ${formatTime(m.scheduled_at)}. White's clock starts at that time, whether or not White is here.${m.draw_odds ? " Armageddon: a draw counts as a win for Black." : ""}</p>
+          <p class="small dim mt-4">${timeControlLabel(m)} · starts ${formatTime(m.scheduled_at)}. Be here 15 minutes early. White has 5 minutes from the start to make the first move, then Black 5 minutes to reply; missing it loses the game by forfeit. The clocks start once both have moved.${m.draw_winner_id ? ` A draw sends ${esc(nameOf(m.draw_winner_id))} through.` : ""}</p>
         </div>`
       : `<div class="lobby-card"><span class="eyebrow">Not scheduled</span><h2>No start time yet</h2><p class="muted mt-4">The organisers will set a time. You'll get an update when they do.</p></div>`;
   } else if (paused() && m.status !== "completed") {
@@ -663,7 +721,7 @@ function renderOverlay() {
     html = `<div class="lobby-card"><span class="eyebrow">Arbiter</span><h2>Game paused</h2><p class="muted mt-4">The clocks are stopped. Play continues when the arbiter resumes the game.</p></div>`;
   }
   // Keep the running countdown element when nothing changed.
-  if (overlay.dataset.kind === kind && kind === "countdown" && overlay.dataset.key === JSON.stringify([m.scheduled_at, S.presence && [...S.presence.keys()]])) return;
+  if (overlay.dataset.kind === kind && (kind === "countdown" || kind === "choose") && overlay.dataset.key === JSON.stringify([m.scheduled_at, S.presence && [...S.presence.keys()]])) return;
   overlay.dataset.kind = kind;
   overlay.dataset.key = JSON.stringify([m.scheduled_at, S.presence && [...S.presence.keys()]]);
   overlay.hidden = !kind;
@@ -765,6 +823,9 @@ function renderFoot() {
   } else if (paused()) {
     line = "Paused by the arbiter.";
     tone = "alert";
+  } else if (deadlineLeft() !== null) {
+    line = `<span data-deadline>${deadlineText()}</span>`;
+    tone = myTurn() ? "mine" : "";
   } else if (mine) {
     if (myTurn()) {
       line = "Your move.";
@@ -788,6 +849,12 @@ function renderFoot() {
       ? `<div class="offer"><p>${icon("handshake", "bold")} ${esc(nameOf(m.draw_offer_by))} has offered a draw.</p></div>`
       : "";
 
+  // A decider still open for the colour choice once the start has passed.
+  const choose =
+    m.choose_by === S.profile.id && st === "live" && !m.move_count
+      ? `<div class="offer"><p>${icon("swap", "bold")} You pick the colours until the first move.</p><div class="row gap-2"><button class="btn btn-sm" data-choose="black">Play Black instead</button></div></div>`
+      : "";
+
   const actions =
     mine && st === "live" && !paused()
       ? `<div class="actions-row">
@@ -795,13 +862,14 @@ function renderFoot() {
           <button class="btn btn-danger btn-sm" data-resign>${icon("flag")} Resign</button>
         </div>`
       : mine && st === "completed"
-        ? `<div class="actions-row"><a class="btn btn-sm" href="home.html">${icon("house")} Dashboard</a>${tiebreakOf() ? `<a class="btn btn-primary btn-sm" href="play.html?id=${tiebreakOf().id}">${icon("lightning", "bold")} Armageddon</a>` : ""}</div>`
+        ? `<div class="actions-row"><a class="btn btn-sm" href="home.html">${icon("house")} Dashboard</a>${nextInSeries() ? `<a class="btn btn-primary btn-sm" href="play.html?id=${nextInSeries().id}">${icon("arrow-right", "bold")} ${esc(nextLabel(nextInSeries()))}</a>` : ""}</div>`
         : "";
 
   const n = lastPly();
   const p = viewPly();
   document.getElementById("foot").innerHTML = `
     <div class="status-line ${tone}"><span class="dot"></span><span>${line}</span></div>
+    ${choose}
     ${offer}
     ${actions}
     <div class="nav-row">
@@ -816,15 +884,15 @@ function renderFoot() {
     </div>`;
 }
 
-function tiebreakOf() {
-  return store.matches.find((x) => x.tiebreak_of === S.match.id) ?? null;
-}
+const nextLabel = (g) => (g.game_kind === "tiebreak" ? "Tiebreak game" : g.game_kind === "decider" ? "Decider" : `Game ${g.game_no}`);
 
 function resultLine() {
   const m = S.match;
   if (!m.result) return "Game over.";
   const reason = esc(endTail(m));
+  if (m.result === "0-0") return "Both players forfeited: neither made a move in time.";
   if (m.result === "1/2-1/2") {
+    if (m.draw_winner_id) return `Drawn${reason}. ${esc(nameOf(m.draw_winner_id))} goes through.`;
     return m.draw_odds ? `Drawn${reason}. Black goes through on draw odds.` : `Drawn${reason}.`;
   }
   const winner = m.result === "1-0" ? m.white_id : m.black_id;
@@ -843,6 +911,7 @@ function renderInfo() {
     <dl class="facts">
       <dt>Event</dt><dd>${esc(t?.name ?? "Amaze Youth Chess Tournament")}</dd>
       <dt>Stage</dt><dd>${esc(matchContext(m))}</dd>
+      ${seriesNote(m) ? `<dt>Series</dt><dd>${seriesNote(m)}</dd>` : ""}
       <dt>White</dt><dd>${esc(nameOf(m.white_id))}</dd>
       <dt>Black</dt><dd>${esc(nameOf(m.black_id))}</dd>
       <dt>Time control</dt><dd>${Math.round(c.white / 60000)}${c.white !== c.black ? ` | ${Math.round(c.black / 60000)}` : ""} min + ${Math.round(c.increment / 1000)} s</dd>
@@ -852,13 +921,14 @@ function renderInfo() {
     ${S.history.length ? `<div class="row gap-2 mt-4"><button class="btn btn-sm" data-act-local="copy-pgn">${icon("copy")} Copy PGN</button><button class="btn btn-sm" data-act-local="download-pgn">${icon("download-simple")} Download</button></div>` : ""}
     <h3>Rules of play</h3>
     <ul class="rules">
+      <li>${icon("check-circle", "fill")}<span>Be online 15 minutes before the start. White must make the first move within 5 minutes of the start, and Black within 5 minutes of White's first move, or loses by forfeit. If neither turns up, both forfeit. The clocks start once both have moved.</span></li>
       <li>${icon("check-circle", "fill")}<span>Checkmate, stalemate, threefold repetition, the fifty-move rule and insufficient material are recognised automatically.</span></li>
       <li>${icon("check-circle", "fill")}<span>If your flag falls you lose, unless your opponent has no way to checkmate; then it's a draw.</span></li>
       <li>${icon("check-circle", "fill")}<span>Losing your connection doesn't stop your clock. Rejoin from the same link as fast as you can.</span></li>
-      <li>${icon("check-circle", "fill")}<span>A draw offer stands until your opponent accepts it, declines it or makes a move.</span></li>
+      <li>${icon("check-circle", "fill")}<span>Draw offers are allowed. An offer stands until your opponent accepts it, declines it or makes a move.</span></li>
       <li>${icon("check-circle", "fill")}<span>Premoves are allowed. There's no touch-move online: a move counts when it's played.</span></li>
-      <li>${icon("check-circle", "fill")}<span>Knockout games can't end level: a drawn game is followed by an Armageddon game (White 5 min, Black 4 min, +2 s). Black goes through on a draw.</span></li>
-      <li>${icon("check-circle", "fill")}<span>No engines, books or help during play. Leaving the game tab is logged for the arbiter.</span></li>
+      <li>${icon("check-circle", "fill")}<span>Knockout ties are series with colours reversed each game. A level series goes to one tiebreak game, colours reversed from the last game; if that is drawn too, a decider where the lower-ranked player picks the colour and a draw sends the higher-ranked player through.</span></li>
+      <li>${icon("check-circle", "fill")}<span>No engines, books or outside help. Report a problem to the arbiter within 5 minutes of the game; appeals go to the organisers within 15 minutes.</span></li>
     </ul>`;
 }
 
@@ -965,7 +1035,7 @@ function renderArbiter() {
         </div>
         <h3>Adjudicate</h3>
         <div class="arb-grid" style="grid-template-columns:repeat(3,1fr)">
-          <button class="btn btn-sm" data-adj="1-0">1 - 0</button><button class="btn btn-sm" data-adj="1/2-1/2">½ - ½</button><button class="btn btn-sm" data-adj="0-1">0 - 1</button>
+          <button class="btn btn-sm" data-adj="1-0">1 - 0</button><button class="btn btn-sm" data-adj="1/2-1/2">½ - ½</button><button class="btn btn-sm" data-adj="0-1">0 - 1</button><button class="btn btn-sm" data-adj="0-0" title="Both players forfeit">0 - 0</button>
         </div>`
       : st === "completed"
         ? `<p class="small muted">The game is over. To correct a result, use <a href="admin.html#matches" style="text-decoration:underline">Matches in the Control Room</a>.</p>`
@@ -1171,6 +1241,9 @@ function onClick(e) {
   const a = e.target.closest("[data-act]");
   if (a) return act(a.dataset.act);
 
+  const choose = e.target.closest("[data-choose]");
+  if (choose) return act("choose_colour", { colour: choose.dataset.choose });
+
   if (e.target.closest("[data-resign]")) return confirmResign();
 
   const local = e.target.closest("[data-act-local]");
@@ -1251,7 +1324,7 @@ function confirmResign() {
 }
 
 function adjudicateModal(result) {
-  const label = result === "1/2-1/2" ? "a draw" : result === "1-0" ? `a win for ${nameOf(S.match.white_id)} (White)` : `a win for ${nameOf(S.match.black_id)} (Black)`;
+  const label = result === "0-0" ? "a double forfeit (no points for either player)" : result === "1/2-1/2" ? "a draw" : result === "1-0" ? `a win for ${nameOf(S.match.white_id)} (White)` : `a win for ${nameOf(S.match.black_id)} (Black)`;
   const d = openModal(
     "Adjudicate the game",
     `<form class="stack gap-4"><p class="muted">End the game now as ${esc(label)}. Standings and the bracket update automatically.</p>
@@ -1328,25 +1401,26 @@ function showResult() {
   const m = S.match;
   if (!m.result) return;
   const mine = myColour();
-  const winnerColour = m.result === "1-0" ? "white" : m.result === "0-1" ? "black" : m.draw_odds ? "black" : null;
+  const drawWinner = m.result === "1/2-1/2" ? (m.draw_winner_id ? (m.draw_winner_id === m.white_id ? "white" : "black") : m.draw_odds ? "black" : null) : null;
+  const winnerColour = m.result === "1-0" ? "white" : m.result === "0-1" ? "black" : drawWinner;
   let big;
-  if (mine) big = winnerColour ? (winnerColour === mine ? "You won" : "You lost") : "Draw";
+  if (m.result === "0-0") big = "Double forfeit";
+  else if (mine) big = winnerColour ? (winnerColour === mine ? "You won" : "You lost") : "Draw";
   else big = winnerColour ? `${nameOf(winnerColour === "white" ? m.white_id : m.black_id).split(" ")[0]} won` : "Draw";
   const reason = endPhrase(m);
-  const oddsNote = m.draw_odds && m.result === "1/2-1/2" ? "<p class=\"small muted mt-2\">Armageddon: Black goes through on a draw.</p>" : "";
+  const oddsNote = drawWinner ? `<p class="small muted mt-2">A draw sends ${esc(nameOf(drawWinner === "white" ? m.white_id : m.black_id))} through.</p>` : "";
   const side = (colour) => {
     const id = colour === "white" ? m.white_id : m.black_id;
     return `<div class="p${winnerColour === colour ? " won" : ""}"><div class="avatar ${colour}" style="width:3.4rem;height:3.4rem;font-size:1.2rem">${esc(initials(nameOf(id)))}</div><span class="n">${esc(nameOf(id))}</span></div>`;
   };
-  const knockoutDraw = isKnockout(m) && !m.tiebreak_of && m.result === "1/2-1/2" && !m.winner_id;
-  const tb = tiebreakOf();
+  const tb = nextInSeries();
   const d = openModal(
     "Game over",
     `<div class="result-hero"><p class="big chrome-text">${esc(big)}</p><p class="score">${resultText(m)}${reason ? ` · ${esc(reason)}` : ""}</p>${oddsNote}</div>
      <div class="result-players">${side("white")}<span class="num dim">vs</span>${side("black")}</div>
-     ${knockoutDraw ? notice(tb ? `An Armageddon game decides who goes through. It starts at ${formatTime(tb.scheduled_at)}.` : "A knockout game can't end level. An Armageddon game will be scheduled and you'll get an update.") : ""}
+     ${seriesResultNote(m)}
      <div class="modal-actions" style="justify-content:center;flex-wrap:wrap">
-      ${tb ? `<a class="btn btn-primary" href="play.html?id=${tb.id}">${icon("lightning", "bold")} Go to Armageddon</a>` : ""}
+      ${tb ? `<a class="btn btn-primary" href="play.html?id=${tb.id}">${icon("arrow-right", "bold")} ${esc(nextLabel(tb))}</a>` : ""}
       <button class="btn ${tb ? "" : "btn-primary"}" data-review>${icon("magnifying-glass", "bold")} Review game</button>
       <a class="btn" href="${mine ? "home.html" : "play.html"}">${mine ? "Dashboard" : "Arena"}</a>
      </div>`,
@@ -1356,6 +1430,19 @@ function showResult() {
     showTab("moves");
     runAnalysis();
   });
+}
+
+// After a series game: the score, and what happens next.
+function seriesResultNote(m) {
+  const tie = tieOf(m);
+  if (!tie) return "";
+  const s = seriesState(tie);
+  const score = `Series: ${seriesNote(m)}.`;
+  if (tie.winner_id) return notice(`${score} ${esc(nameOf(tie.winner_id))} goes through.`);
+  const next = nextInSeries();
+  if (next) return notice(`${score} Next: ${esc(nextLabel(next).toLowerCase())}${next.scheduled_at ? ` at ${formatTime(next.scheduled_at)}` : ", time to be set by the organisers"}.`);
+  if (s.main.every((g) => g.status === "completed")) return notice(`${score} The series is level, so a ${s.tiebreak ? "decider" : "tiebreak game"} follows. You'll get an update with the time.`);
+  return notice(score);
 }
 
 // ---------------------------------------------------------------- review

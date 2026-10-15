@@ -894,7 +894,10 @@ select.input option { background: var(--graphite); }
 .bracket-card .line { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .bracket-card .line.lost { color: var(--fg-dim); }
 .bracket-card .line.won .pname { font-weight: 800; }
-.bracket-card .foot { font-family: var(--font-mono); font-size: 0.66rem; color: var(--fg-dim); }
+.bracket-card .foot { display: flex; align-items: center; gap: 0.4rem; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--font-mono); font-size: 0.66rem; color: var(--fg-dim); }
+.bracket-card .rk { display: inline-block; min-width: 1.4rem; margin-right: 0.35rem; font-family: var(--font-mono); font-size: 0.66rem; color: var(--fg-dim); }
+.bracket-card .sc { flex-shrink: 0; font-weight: 700; }
+.bracket-card .line.lost .sc { font-weight: 500; }
 .connector { position: absolute; right: -1.25rem; width: 1.25rem; border: 0 solid rgb(255 255 255 / 0.2); }
 .connector.down { top: 50%; border-top-width: 1px; border-right-width: 1px; border-top-right-radius: var(--r-sm); }
 .connector.up { bottom: 50%; border-bottom-width: 1px; border-right-width: 1px; border-bottom-right-radius: var(--r-sm); }
@@ -1571,3 +1574,13 @@ a.ctl-board { pointer-events: auto; display: block; }
 @keyframes ticker-slide { to { transform: translate3d(-50%, 0, 0); } }
 .ticker__track.is-css { animation: ticker-slide 40s linear infinite; }
 .ticker__track.is-paused { animation-play-state: paused; }
+
+/* ---------------------------------------------------------------- Control Room: clocks by stage, Selection Round ranking */
+
+.clock-grid { display: grid; gap: 0.5rem; }
+.clock-row { display: grid; grid-template-columns: minmax(0, 1fr) 4.5rem auto 4.5rem; align-items: center; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid var(--line); }
+.clock-row:last-child { border-bottom: 0; }
+.clock-row .input { text-align: center; }
+.rank-grid { display: grid; gap: 0.4rem 1rem; grid-template-columns: minmax(0, 1fr); max-height: 50vh; overflow-y: auto; padding-right: 0.25rem; }
+@media (min-width: 720px) { .rank-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.rank-row { display: grid; grid-template-columns: 2rem 1.2rem minmax(0, 1fr); align-items: center; gap: 0.5rem; }

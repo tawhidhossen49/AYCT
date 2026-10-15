@@ -42,6 +42,7 @@
 .ph.ph-browser:before { content: "\e0f4"; }
 .ph.ph-building:before { content: "\e100"; }
 .ph.ph-calendar-blank:before { content: "\e10a"; }
+.ph.ph-calendar-check:before { content: "\e712"; }
 .ph.ph-camera:before { content: "\e10e"; }
 .ph.ph-cards:before { content: "\e0f8"; }
 .ph.ph-caret-double-left:before { content: "\e128"; }
@@ -75,9 +76,11 @@
 .ph.ph-ear:before { content: "\e70c"; }
 .ph.ph-empty:before { content: "\edbc"; }
 .ph.ph-engine:before { content: "\ea80"; }
+.ph.ph-envelope-simple:before { content: "\e218"; }
 .ph.ph-export:before { content: "\eaf0"; }
 .ph.ph-eye:before { content: "\e220"; }
 .ph.ph-eye-slash:before { content: "\e224"; }
+.ph.ph-facebook-logo:before { content: "\e226"; }
 .ph.ph-files:before { content: "\e710"; }
 .ph.ph-flag:before { content: "\e244"; }
 .ph.ph-flag-checkered:before { content: "\ea38"; }
@@ -88,16 +91,17 @@
 .ph.ph-ghost:before { content: "\e62a"; }
 .ph.ph-globe-hemisphere-west:before { content: "\e28c"; }
 .ph.ph-graph:before { content: "\eb58"; }
-.ph.ph-hand:before { content: "\e298"; }
 .ph.ph-hand-swipe-right:before { content: "\ec92"; }
 .ph.ph-handshake:before { content: "\e582"; }
 .ph.ph-hash:before { content: "\e2a2"; }
 .ph.ph-hourglass:before { content: "\e2b2"; }
 .ph.ph-hourglass-medium:before { content: "\e2b8"; }
 .ph.ph-house:before { content: "\e2c2"; }
+.ph.ph-identification-card:before { content: "\e2c8"; }
 .ph.ph-image:before { content: "\e2ca"; }
 .ph.ph-images:before { content: "\e836"; }
 .ph.ph-info:before { content: "\e2ce"; }
+.ph.ph-instagram-logo:before { content: "\e2d0"; }
 .ph.ph-kanban:before { content: "\eb54"; }
 .ph.ph-key:before { content: "\e2d6"; }
 .ph.ph-layout:before { content: "\e6d6"; }
@@ -109,7 +113,9 @@
 .ph.ph-list-numbers:before { content: "\e2f6"; }
 .ph.ph-lock:before { content: "\e2fa"; }
 .ph.ph-log:before { content: "\ed82"; }
+.ph.ph-magic-wand:before { content: "\e6b6"; }
 .ph.ph-magnifying-glass:before { content: "\e30c"; }
+.ph.ph-medal:before { content: "\e320"; }
 .ph.ph-megaphone:before { content: "\e324"; }
 .ph.ph-memory:before { content: "\e9c4"; }
 .ph.ph-microphone:before { content: "\e326"; }
@@ -129,6 +135,8 @@
 .ph.ph-plus:before { content: "\e3d4"; }
 .ph.ph-pulse:before { content: "\e000"; }
 .ph.ph-push-pin:before { content: "\e3e2"; }
+.ph.ph-radio:before { content: "\e77e"; }
+.ph.ph-ranking:before { content: "\ed62"; }
 .ph.ph-record:before { content: "\e3ee"; }
 .ph.ph-repeat:before { content: "\e3f6"; }
 .ph.ph-resize:before { content: "\ed6e"; }
@@ -153,11 +161,13 @@
 .ph.ph-stamp:before { content: "\ea48"; }
 .ph.ph-steps:before { content: "\ecbe"; }
 .ph.ph-stop:before { content: "\e46c"; }
+.ph.ph-student:before { content: "\e73e"; }
 .ph.ph-swap:before { content: "\e83c"; }
 .ph.ph-table:before { content: "\e476"; }
 .ph.ph-tabs:before { content: "\e778"; }
 .ph.ph-tag:before { content: "\e478"; }
 .ph.ph-target:before { content: "\e47c"; }
+.ph.ph-ticket:before { content: "\e490"; }
 .ph.ph-timer:before { content: "\e492"; }
 .ph.ph-translate:before { content: "\e4a2"; }
 .ph.ph-trash:before { content: "\e4a6"; }
@@ -170,8 +180,10 @@
 .ph.ph-users-three:before { content: "\e68e"; }
 .ph.ph-video:before { content: "\e740"; }
 .ph.ph-watch:before { content: "\e4e6"; }
+.ph.ph-whatsapp-logo:before { content: "\e5d0"; }
 .ph.ph-wifi-slash:before { content: "\e4f2"; }
 .ph.ph-x:before { content: "\e4f6"; }
+.ph.ph-youtube-logo:before { content: "\e4fc"; }
 
 @font-face {
   font-family: "Phosphor-Bold";
@@ -214,6 +226,7 @@
 .ph-bold.ph-browser:before { content: "\e0f4"; }
 .ph-bold.ph-building:before { content: "\e100"; }
 .ph-bold.ph-calendar-blank:before { content: "\e10a"; }
+.ph-bold.ph-calendar-check:before { content: "\e712"; }
 .ph-bold.ph-camera:before { content: "\e10e"; }
 .ph-bold.ph-cards:before { content: "\e0f8"; }
 .ph-bold.ph-caret-double-left:before { content: "\e128"; }
@@ -247,9 +260,11 @@
 .ph-bold.ph-ear:before { content: "\e70c"; }
 .ph-bold.ph-empty:before { content: "\edbc"; }
 .ph-bold.ph-engine:before { content: "\ea80"; }
+.ph-bold.ph-envelope-simple:before { content: "\e218"; }
 .ph-bold.ph-export:before { content: "\eaf0"; }
 .ph-bold.ph-eye:before { content: "\e220"; }
 .ph-bold.ph-eye-slash:before { content: "\e224"; }
+.ph-bold.ph-facebook-logo:before { content: "\e226"; }
 .ph-bold.ph-files:before { content: "\e710"; }
 .ph-bold.ph-flag:before { content: "\e244"; }
 .ph-bold.ph-flag-checkered:before { content: "\ea38"; }
@@ -260,16 +275,17 @@
 .ph-bold.ph-ghost:before { content: "\e62a"; }
 .ph-bold.ph-globe-hemisphere-west:before { content: "\e28c"; }
 .ph-bold.ph-graph:before { content: "\eb58"; }
-.ph-bold.ph-hand:before { content: "\e298"; }
 .ph-bold.ph-hand-swipe-right:before { content: "\ec92"; }
 .ph-bold.ph-handshake:before { content: "\e582"; }
 .ph-bold.ph-hash:before { content: "\e2a2"; }
 .ph-bold.ph-hourglass:before { content: "\e2b2"; }
 .ph-bold.ph-hourglass-medium:before { content: "\e2b8"; }
 .ph-bold.ph-house:before { content: "\e2c2"; }
+.ph-bold.ph-identification-card:before { content: "\e2c8"; }
 .ph-bold.ph-image:before { content: "\e2ca"; }
 .ph-bold.ph-images:before { content: "\e836"; }
 .ph-bold.ph-info:before { content: "\e2ce"; }
+.ph-bold.ph-instagram-logo:before { content: "\e2d0"; }
 .ph-bold.ph-kanban:before { content: "\eb54"; }
 .ph-bold.ph-key:before { content: "\e2d6"; }
 .ph-bold.ph-layout:before { content: "\e6d6"; }
@@ -281,7 +297,9 @@
 .ph-bold.ph-list-numbers:before { content: "\e2f6"; }
 .ph-bold.ph-lock:before { content: "\e2fa"; }
 .ph-bold.ph-log:before { content: "\ed82"; }
+.ph-bold.ph-magic-wand:before { content: "\e6b6"; }
 .ph-bold.ph-magnifying-glass:before { content: "\e30c"; }
+.ph-bold.ph-medal:before { content: "\e320"; }
 .ph-bold.ph-megaphone:before { content: "\e324"; }
 .ph-bold.ph-memory:before { content: "\e9c4"; }
 .ph-bold.ph-microphone:before { content: "\e326"; }
@@ -301,6 +319,8 @@
 .ph-bold.ph-plus:before { content: "\e3d4"; }
 .ph-bold.ph-pulse:before { content: "\e000"; }
 .ph-bold.ph-push-pin:before { content: "\e3e2"; }
+.ph-bold.ph-radio:before { content: "\e77e"; }
+.ph-bold.ph-ranking:before { content: "\ed62"; }
 .ph-bold.ph-record:before { content: "\e3ee"; }
 .ph-bold.ph-repeat:before { content: "\e3f6"; }
 .ph-bold.ph-resize:before { content: "\ed6e"; }
@@ -325,11 +345,13 @@
 .ph-bold.ph-stamp:before { content: "\ea48"; }
 .ph-bold.ph-steps:before { content: "\ecbe"; }
 .ph-bold.ph-stop:before { content: "\e46c"; }
+.ph-bold.ph-student:before { content: "\e73e"; }
 .ph-bold.ph-swap:before { content: "\e83c"; }
 .ph-bold.ph-table:before { content: "\e476"; }
 .ph-bold.ph-tabs:before { content: "\e778"; }
 .ph-bold.ph-tag:before { content: "\e478"; }
 .ph-bold.ph-target:before { content: "\e47c"; }
+.ph-bold.ph-ticket:before { content: "\e490"; }
 .ph-bold.ph-timer:before { content: "\e492"; }
 .ph-bold.ph-translate:before { content: "\e4a2"; }
 .ph-bold.ph-trash:before { content: "\e4a6"; }
@@ -342,8 +364,10 @@
 .ph-bold.ph-users-three:before { content: "\e68e"; }
 .ph-bold.ph-video:before { content: "\e740"; }
 .ph-bold.ph-watch:before { content: "\e4e6"; }
+.ph-bold.ph-whatsapp-logo:before { content: "\e5d0"; }
 .ph-bold.ph-wifi-slash:before { content: "\e4f2"; }
 .ph-bold.ph-x:before { content: "\e4f6"; }
+.ph-bold.ph-youtube-logo:before { content: "\e4fc"; }
 
 @font-face {
   font-family: "Phosphor-Fill";
@@ -386,6 +410,7 @@
 .ph-fill.ph-browser:before { content: "\e0f4"; }
 .ph-fill.ph-building:before { content: "\e100"; }
 .ph-fill.ph-calendar-blank:before { content: "\e10a"; }
+.ph-fill.ph-calendar-check:before { content: "\e712"; }
 .ph-fill.ph-camera:before { content: "\e10e"; }
 .ph-fill.ph-cards:before { content: "\e0f8"; }
 .ph-fill.ph-caret-double-left:before { content: "\e128"; }
@@ -419,9 +444,11 @@
 .ph-fill.ph-ear:before { content: "\e70c"; }
 .ph-fill.ph-empty:before { content: "\edbc"; }
 .ph-fill.ph-engine:before { content: "\ea80"; }
+.ph-fill.ph-envelope-simple:before { content: "\e218"; }
 .ph-fill.ph-export:before { content: "\eaf0"; }
 .ph-fill.ph-eye:before { content: "\e220"; }
 .ph-fill.ph-eye-slash:before { content: "\e224"; }
+.ph-fill.ph-facebook-logo:before { content: "\e226"; }
 .ph-fill.ph-files:before { content: "\e710"; }
 .ph-fill.ph-flag:before { content: "\e244"; }
 .ph-fill.ph-flag-checkered:before { content: "\ea38"; }
@@ -432,16 +459,17 @@
 .ph-fill.ph-ghost:before { content: "\e62a"; }
 .ph-fill.ph-globe-hemisphere-west:before { content: "\e28c"; }
 .ph-fill.ph-graph:before { content: "\eb58"; }
-.ph-fill.ph-hand:before { content: "\e298"; }
 .ph-fill.ph-hand-swipe-right:before { content: "\ec92"; }
 .ph-fill.ph-handshake:before { content: "\e582"; }
 .ph-fill.ph-hash:before { content: "\e2a2"; }
 .ph-fill.ph-hourglass:before { content: "\e2b2"; }
 .ph-fill.ph-hourglass-medium:before { content: "\e2b8"; }
 .ph-fill.ph-house:before { content: "\e2c2"; }
+.ph-fill.ph-identification-card:before { content: "\e2c8"; }
 .ph-fill.ph-image:before { content: "\e2ca"; }
 .ph-fill.ph-images:before { content: "\e836"; }
 .ph-fill.ph-info:before { content: "\e2ce"; }
+.ph-fill.ph-instagram-logo:before { content: "\e2d0"; }
 .ph-fill.ph-kanban:before { content: "\eb54"; }
 .ph-fill.ph-key:before { content: "\e2d6"; }
 .ph-fill.ph-layout:before { content: "\e6d6"; }
@@ -453,7 +481,9 @@
 .ph-fill.ph-list-numbers:before { content: "\e2f6"; }
 .ph-fill.ph-lock:before { content: "\e2fa"; }
 .ph-fill.ph-log:before { content: "\ed82"; }
+.ph-fill.ph-magic-wand:before { content: "\e6b6"; }
 .ph-fill.ph-magnifying-glass:before { content: "\e30c"; }
+.ph-fill.ph-medal:before { content: "\e320"; }
 .ph-fill.ph-megaphone:before { content: "\e324"; }
 .ph-fill.ph-memory:before { content: "\e9c4"; }
 .ph-fill.ph-microphone:before { content: "\e326"; }
@@ -473,6 +503,8 @@
 .ph-fill.ph-plus:before { content: "\e3d4"; }
 .ph-fill.ph-pulse:before { content: "\e000"; }
 .ph-fill.ph-push-pin:before { content: "\e3e2"; }
+.ph-fill.ph-radio:before { content: "\e77e"; }
+.ph-fill.ph-ranking:before { content: "\ed62"; }
 .ph-fill.ph-record:before { content: "\e3ee"; }
 .ph-fill.ph-repeat:before { content: "\e3f6"; }
 .ph-fill.ph-resize:before { content: "\ed6e"; }
@@ -497,11 +529,13 @@
 .ph-fill.ph-stamp:before { content: "\ea48"; }
 .ph-fill.ph-steps:before { content: "\ecbe"; }
 .ph-fill.ph-stop:before { content: "\e46c"; }
+.ph-fill.ph-student:before { content: "\e73e"; }
 .ph-fill.ph-swap:before { content: "\e83c"; }
 .ph-fill.ph-table:before { content: "\e476"; }
 .ph-fill.ph-tabs:before { content: "\e778"; }
 .ph-fill.ph-tag:before { content: "\e478"; }
 .ph-fill.ph-target:before { content: "\e47c"; }
+.ph-fill.ph-ticket:before { content: "\e490"; }
 .ph-fill.ph-timer:before { content: "\e492"; }
 .ph-fill.ph-translate:before { content: "\e4a2"; }
 .ph-fill.ph-trash:before { content: "\e4a6"; }
@@ -514,5 +548,7 @@
 .ph-fill.ph-users-three:before { content: "\e68e"; }
 .ph-fill.ph-video:before { content: "\e740"; }
 .ph-fill.ph-watch:before { content: "\e4e6"; }
+.ph-fill.ph-whatsapp-logo:before { content: "\e5d0"; }
 .ph-fill.ph-wifi-slash:before { content: "\e4f2"; }
 .ph-fill.ph-x:before { content: "\e4f6"; }
+.ph-fill.ph-youtube-logo:before { content: "\e4fc"; }

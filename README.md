@@ -18,17 +18,33 @@ the folder as it is.
 
 ## Format
 
-- 32 players in 8 groups of 4 (A to H), dealt by a random draw (or placed
-  by hand).
-- Each group plays a round robin over 3 rounds (6 games per group, 48 in all).
-- The top 2 of each group reach a single-game knockout:
-  round of 16, quarterfinals, semifinals, final. Group winners play white
-  against a runner-up from the neighbouring group (A1 v B2, B1 v A2, ...).
-- The semifinal losers play a third-place match, so there are 64 games in
-  all: 48 in the groups and 16 in the knockout.
-- Group tables: win 1, draw ½. Ties go to Sonneborn-Berger, then wins,
-  then head-to-head, then the order of the draw.
-- A drawn knockout game needs a tiebreak winner, which a moderator records.
+From the official guidebook (AYCT 2027).
+
+- Entry: Bangladeshi citizens, current students, under 30, with an active
+  Lichess account. Fee 50 BDT, registration closes 10 January 2027.
+- Selection Round: on Lichess (not on this site), 4 February 2027, 7:30 PM,
+  a Swiss of 10 rounds at 5+0. The top 32 qualify, ranked 1 to 32.
+- Groups: the ranks fill groups A to H in order, so Group A holds ranks 1,
+  9, 17 and 25, Group B 2, 10, 18 and 26, ... Group H 8, 16, 24 and 32. A
+  player's rank is `(seat - 1) * 8 + group number` (Control Room, Groups,
+  Enter the Selection Round ranking).
+- Each group plays a double round robin at 5+0: six rounds, every pair twice
+  with colours reversed (12 games per group, 96 in all). Win 1, draw ½.
+  Ties go to Sonneborn-Berger, then wins, then head-to-head, then the better
+  Selection Round rank. The top 2 go through.
+- Knockout, every tie a series with colours reversed each game: round of 16
+  10+0, quarterfinals 10+5, semifinals 15+5 and third place 15+10 (2 games
+  each), and a 4-game final at 25+2, all four played. The better-ranked
+  player has White in game 1. 130 games in all, plus tiebreaks.
+- Round of 16: M1 A1 v H2, M2 H1 v A2, M3 D1 v E2, M4 E1 v D2, M5 C1 v F2,
+  M6 F1 v C2, M7 B1 v G2, M8 G1 v B2. Quarterfinals: winners of M1 v M2,
+  M3 v M4, M5 v M6, M7 v M8; semifinals QF1 v QF2 and QF3 v QF4.
+- A level series gets one 3+2 tiebreak game, colours reversed from the last
+  game. Still level: a 3+2 decider; the lower-ranked player picks the colour
+  in the Arena, and a draw sends the higher-ranked player through.
+- First moves: White within 5 minutes of the start, Black within 5 minutes
+  of White's first move, or that player loses by forfeit. If nobody turned
+  up, both forfeit (result 0-0, no points). Clocks start once both have moved.
 
 ## Roles
 
@@ -96,8 +112,9 @@ then saves the new position. It follows the FIDE Online Chess Regulations:
 - Checkmate, stalemate, threefold repetition, the fifty-move rule and
   insufficient material end the game automatically.
 - A flag fall loses, unless the opponent can't possibly mate (then a draw).
-- A game starts at its scheduled time with White's clock running, and a
-  disconnection doesn't stop the clock, so a no-show loses on time.
+- A game unlocks at its scheduled time. No clock runs until both players
+  have made their first move; until then the first-move deadlines apply
+  (above). A disconnection doesn't stop the clock.
 - A draw offer stands until it is accepted, declined, or the opponent moves.
 - Premoves are allowed; up to 0.5 s of network lag per move is forgiven.
 - Arbiters (admins and moderators) can pause, add time, take back a move,
@@ -105,19 +122,24 @@ then saves the new position. It follows the FIDE Online Chess Regulations:
 
 ## What runs by itself
 
-- Timeouts and no-shows are ended by the server every 20 seconds (pg_cron),
-  even if nobody has the game open.
+- Timeouts and missed first-move deadlines are ended by the server every 20
+  seconds (pg_cron), even if nobody has the game open.
 - Players get updates (bell, toast, dashboard) when a game is scheduled or
-  moved, 10 minutes before it starts, when it ends, when they advance, and
+  moved, 15 minutes before it starts, when it ends, when they advance, and
   when the arbiter messages them.
-- A drawn knockout game gets an Armageddon game, colours reversed: White 5
-  minutes, Black 4, +2 seconds, Black goes through on a draw.
-- When the last group game ends, the round of 16 is drawn from the tables.
-- Winners move into the next round and the semifinal losers into the
-  third-place match; the final's winner completes the event.
+- When the last group game ends, the round of 16 is built from the tables.
+- In the database each bracket slot is a "tie" row (stage r16 to final, no
+  `series_id`), never played itself. Once both its players are known, its
+  games are created (rows with `series_id`, `game_no`, `game_kind`), with
+  the clocks from `tournaments.format`. The organisers give them start times.
+- When a series ends level, the tiebreak game (and if needed the decider,
+  with `choose_by` and `draw_winner_id`) is created and scheduled after the
+  set delay. The series winner moves into the next tie, the semifinal losers
+  into the third-place series, and the final's winner completes the event.
 
-The two switches (Armageddon, bracket after groups), the Armageddon delay and
+The switches (series tiebreaks, bracket after groups), the tiebreak delay and
 the earliest move for draw offers are in Control Room, Tournament, Autopilot.
+The clocks for each stage are in Control Room, Tournament.
 
 Fair play: the two players can't see commentary until their game ends, the
 engine review only opens after the game, and leaving the game tab during play
@@ -189,14 +211,18 @@ their own clock.
 
 ## Running a tournament
 
-1. Control Room, Tournament: create the edition (year, time control).
-2. Control Room, People: add the 32 players, moderators and commentators.
-3. Control Room, Groups: run the random draw, or place players by hand.
+1. Control Room, Tournament: create the edition and check the clocks by stage.
+2. Run the Selection Round on Lichess. Control Room, People: add the 32
+   qualifiers, moderators and commentators.
+3. Control Room, Groups: enter the Selection Round ranking (paste the names
+   in rank order). Players are placed into the groups by rank.
 4. Control Room, Matches: generate the group fixtures, then set a start time per round.
 5. Games are played on the site. Staff can also enter results for games
-   played over the board, or correct them.
+   played elsewhere, or correct them.
 6. The bracket builds itself when the last group game ends (or Control
-   Room, Knockout: generate it by hand). Schedule each knockout round.
+   Room, Knockout: generate it by hand). On the Matches tab, schedule game 1
+   of every series in a round, then game 2 (the final: games 1 to 4).
+   Tiebreak games schedule themselves.
 7. During games, watch everything from Control Room, Live.
 
 ## Setting up a fresh Supabase project

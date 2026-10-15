@@ -2,7 +2,7 @@
 // them into <main id="app">. Every piece of user text goes through esc().
 
 import { ROLE_LABEL, isStaff, signOut } from "./auth.js";
-import { store, effectiveStatus, matchContext } from "./store.js";
+import { store, effectiveStatus, matchContext, rankOf } from "./store.js";
 import { formatDate, formatTime, relative, serverNow } from "./time.js";
 import { formatPoints, groupStandings } from "./standings.js";
 import { mountBell, startFeed } from "./notify.js";
@@ -226,7 +226,7 @@ export function groupTableHtml(group, { me = null, compact = false } = {}) {
         : `<td class="c num muted">${r.wins}</td><td class="c num muted">${r.draws}</td><td class="c num muted">${r.losses}</td><td class="c num dim">${formatPoints(r.sb)}</td>`;
       return `<tr class="${r.playerId === me ? "me" : ""}">
         <td style="width:3.5rem"><span class="rank${i < 2 ? " through" : ""}">${i + 1}</span></td>
-        <td style="max-width:0"><span class="truncate" style="display:block;${r.playerId === me ? "font-weight:600" : ""}">${esc(p?.full_name ?? "Unknown player")}</span>${p?.school ? `<span class="xs dim truncate" style="display:block">${esc(p.school)}</span>` : ""}</td>
+        <td style="max-width:0"><span class="truncate" style="display:block;${r.playerId === me ? "font-weight:600" : ""}">${esc(p?.full_name ?? "Unknown player")}</span><span class="xs dim truncate" style="display:block">${[rankOf(r.playerId) ? `Rank ${rankOf(r.playerId)}` : "", esc(p?.school ?? "")].filter(Boolean).join(" · ")}</span></td>
         ${cells}
         <td class="r num strong">${formatPoints(r.points)}</td>
       </tr>`;

@@ -435,3 +435,25 @@ a.reg-option:hover .reg-option-go { color: var(--fg); }
   .hv__intro .lc__unit { padding: 0.3rem 0.35rem 0.26rem; }
   .hv__intro .lc__unit b { font-size: 1.05rem; }
 }
+
+/* ---------------------------------------------------------------- how to enter */
+
+.info-grid { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 640px) { .info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .info-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.info-card { display: flex; flex-direction: column; gap: 0.75rem; padding: 1.6rem; min-width: 0; }
+.info-card > i { font-size: 1.6rem; color: var(--chrome); }
+.info-card h3 { font-weight: 800; font-size: var(--text-lg); }
+.info-card p, .info-card li { color: var(--fg-muted); font-size: var(--text-sm); }
+.info-card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.45rem; }
+.info-card li { display: flex; gap: 0.5rem; align-items: baseline; }
+.info-card li::before { content: ""; flex-shrink: 0; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--chrome); transform: translateY(-0.1rem); }
+.info-card .info-big { white-space: nowrap; font-family: var(--font-mono); font-weight: 600; font-size: clamp(1.9rem, 2.6vw, 2.5rem); line-height: 1; letter-spacing: -0.03em; color: var(--fg); }
+.info-card .info-big .soft { color: var(--fg-dim); font-size: 0.55em; letter-spacing: 0; }
+@media (min-width: 1100px) { .info-card.info-wide { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 1.25rem; } }
+
+/* The main page's footer has contact details and social links too. */
+@media (min-width: 768px) { .footer__cols--wide { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1100px) { .footer__cols--wide { grid-template-columns: minmax(0, 1.3fr) repeat(4, minmax(0, 1fr)); } }
+.footer__cols--wide a { display: inline-flex; align-items: center; gap: 0.45rem; min-width: 0; }
+.footer__cols--wide a i { font-size: 1.05rem; flex-shrink: 0; }

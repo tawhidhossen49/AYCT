@@ -8,6 +8,9 @@
 //   offer_draw / accept_draw / decline_draw either player
 //   flag                                    anyone watching; ends the game if
 //                                           the side to move is out of time
+//                                           or missed the first-move deadline
+//   choose_colour { colour: "white"|"black" } the player picking colours for
+//                                           a knockout decider, before it starts
 //   Arbiter (admins and moderators):
 //   pause / resume
 //   add_time    { color: "white"|"black", seconds }
@@ -32,6 +35,12 @@ const json = (body, status = 200) =>
 const MAX_LAG_MS = 500;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// The tournament rules: White makes the first move within 5 minutes of the
+// start, Black within 5 minutes of White's first move, or loses by forfeit.
+// The clocks start once both have moved (as on Lichess). If nobody turned
+// up at all, both players forfeit (0-0).
+const FIRST_MOVE_MS = 5 * 60_000;
 
 // Requests per person in a 10-second window. Plenty for fast play with
 // premoves; a script hammering the server gets 429. Test bots are driven
@@ -102,6 +111,30 @@ Deno.serve(async (req) => {
   if (!match.white_id || !match.black_id) return json({ error: "Both players are not set yet" }, 409);
 
   const now = Date.now();
+
+  // A knockout decider: the lower-ranked player picks their colour, any
+  // time until the first move.
+  if (body.action === "choose_colour") {
+    if (match.choose_by !== uid) return json({ error: "You don't choose the colours in this game" }, 403);
+    if (match.move_count > 0) return json({ error: "The game has already started" }, 409);
+    if (!["white", "black"].includes(body.colour)) return json({ error: "Pick White or Black" }, 400);
+    const swap = (body.colour === "white") !== (match.white_id === uid);
+    const update = { choose_by: null };
+    if (swap) Object.assign(update, { white_id: match.black_id, black_id: match.white_id });
+    const { data: saved, error: saveError } = await admin
+      .from("matches")
+      .update(update)
+      .eq("id", match.id)
+      .eq("move_count", 0)
+      .eq("choose_by", uid)
+      .select("*")
+      .maybeSingle();
+    if (saveError) return json({ error: "Couldn't save that, please try again" }, 500);
+    if (!saved) return json({ error: "The game changed, please try again" }, 409);
+    await admin.from("game_events").insert({ match_id: match.id, user_id: uid, kind: "colour_chosen", detail: { colour: body.colour } });
+    return json({ match: saved, server_now: new Date().toISOString() });
+  }
+
   if (!match.scheduled_at || new Date(match.scheduled_at).getTime() > now) {
     return json({ error: "This game hasn't started yet" }, 409);
   }
@@ -116,8 +149,8 @@ Deno.serve(async (req) => {
   const blackBase = match.black_base_ms ?? tcMs;
   const incMs = match.increment_ms ?? (tournament?.increment_seconds ?? 0) * 1000;
 
-  // A scheduled game goes live at its start time. White's clock runs from
-  // then, so a player who doesn't show up loses on time.
+  // A scheduled game goes live at its start time, and White's first-move
+  // deadline counts from then.
   const patch = {};
   if (match.status === "scheduled") {
     match.status = "live";
@@ -139,8 +172,12 @@ Deno.serve(async (req) => {
   const moverKey = turn === "w" ? "white_ms" : "black_ms";
   const toMoveId = turn === "w" ? match.white_id : match.black_id;
   const paused = !!match.paused_at;
+  // Until both players have made their first move no clock runs; instead
+  // the side to move has a deadline.
+  const opening = match.move_count < 2;
   const elapsed = paused ? 0 : now - new Date(match.clock_started_at).getTime();
-  const leftForMover = match[moverKey] - elapsed;
+  const leftForMover = opening ? match[moverKey] : match[moverKey] - elapsed;
+  const missedFirstMove = opening && !paused && elapsed > FIRST_MOVE_MS;
   const isPlayer = uid === match.white_id || uid === match.black_id;
   const opponentOf = (id) => (id === match.white_id ? match.black_id : match.white_id);
   const events = [];
@@ -157,10 +194,30 @@ Deno.serve(async (req) => {
     });
 
   // Stops the running clock at its current reading, so later changes start
-  // from an exact figure.
+  // from an exact figure. Before the first moves there is no running clock,
+  // and the first-move deadline stays where it is.
   const settleClock = () => {
+    if (opening) return;
     patch[moverKey] = Math.max(0, Math.round(leftForMover));
     patch.clock_started_at = new Date(now).toISOString();
+  };
+
+  // The side to move missed its first-move deadline. White not moving
+  // loses only if Black turned up; if nobody did, both forfeit.
+  const forfeit = async () => {
+    if (match.move_count === 1) return finish("1-0", "forfeit");
+    let blackHere = uid === match.black_id;
+    if (!blackHere) {
+      const { data: bp } = await admin.from("profiles").select("is_bot").eq("id", match.black_id).single();
+      const { count } = await admin
+        .from("game_events")
+        .select("id", { count: "exact", head: true })
+        .eq("match_id", match.id)
+        .eq("user_id", match.black_id)
+        .eq("kind", "joined");
+      blackHere = !!bp?.is_bot || !!count;
+    }
+    return blackHere ? finish("0-1", "forfeit") : finish("0-0", "double forfeit");
   };
 
   const timeoutResult = () => {
@@ -183,11 +240,16 @@ Deno.serve(async (req) => {
     case "move": {
       if (uid !== toMoveId) return json({ error: "It's not your move" }, 403);
       if (paused) return json({ error: "The arbiter has paused this game" }, 409);
+      if (missedFirstMove) {
+        await forfeit();
+        break;
+      }
 
       // Lag compensation: charge the reported thinking time, within limits.
-      let charged = elapsed;
+      // A first move costs nothing.
+      let charged = opening ? 0 : elapsed;
       const think = Number(body.think_ms);
-      if (Number.isFinite(think) && think >= 0) charged = Math.min(elapsed, Math.max(think, elapsed - MAX_LAG_MS));
+      if (!opening && Number.isFinite(think) && think >= 0) charged = Math.min(elapsed, Math.max(think, elapsed - MAX_LAG_MS));
       const left = match[moverKey] - charged;
       if (left <= 0) {
         timeoutResult();
@@ -202,7 +264,7 @@ Deno.serve(async (req) => {
       }
       if (!moved) return json({ error: "Illegal move" }, 422);
 
-      const after = Math.round(left + incMs);
+      const after = Math.round(opening ? left : left + incMs);
       Object.assign(patch, {
         fen: chess.fen(),
         pgn: chess.pgn(),
@@ -213,6 +275,8 @@ Deno.serve(async (req) => {
         clocks: [...(match.clocks ?? []), after],
         // An offer stands until the opponent answers it; moving is a "no".
         draw_offer_by: match.draw_offer_by === uid ? uid : null,
+        // Moving first in a decider without choosing keeps the colours.
+        choose_by: null,
       });
 
       if (chess.isCheckmate()) finish(turn === "w" ? "1-0" : "0-1", "checkmate");
@@ -229,6 +293,10 @@ Deno.serve(async (req) => {
       if (paused) return json({ error: "The arbiter has paused this game" }, 409);
       const { data: mover } = await admin.from("profiles").select("is_bot").eq("id", toMoveId).single();
       if (!mover?.is_bot) return json({ error: "It's not a bot's move" }, 409);
+      if (missedFirstMove) {
+        await forfeit();
+        break;
+      }
       if (leftForMover <= 0) {
         timeoutResult();
         break;
@@ -240,7 +308,7 @@ Deno.serve(async (req) => {
       }
       if (!chess.moves().length) return json({ error: "No legal move" }, 409);
       chess.move(botMove(chess));
-      const after = Math.round(leftForMover + incMs);
+      const after = Math.round(opening ? leftForMover : leftForMover + incMs);
       Object.assign(patch, {
         fen: chess.fen(),
         pgn: chess.pgn(),
@@ -250,6 +318,7 @@ Deno.serve(async (req) => {
         clock_started_at: new Date(now).toISOString(),
         clocks: [...(match.clocks ?? []), after],
         draw_offer_by: null,
+        choose_by: null,
       });
       if (chess.isCheckmate()) finish(turn === "w" ? "1-0" : "0-1", "checkmate");
       else if (chess.isStalemate()) finish("1/2-1/2", "stalemate");
@@ -311,7 +380,11 @@ Deno.serve(async (req) => {
 
     case "flag": {
       if (!isPlayer && !isStaff) return json({ error: "Not allowed" }, 403);
-      if (paused || leftForMover > 0) return json({ error: "There's still time on the clock" }, 409);
+      if (missedFirstMove) {
+        await forfeit();
+        break;
+      }
+      if (paused || opening || leftForMover > 0) return json({ error: "There's still time on the clock" }, 409);
       timeoutResult();
       break;
     }
@@ -320,6 +393,10 @@ Deno.serve(async (req) => {
       const denied = staffOnly();
       if (denied) return denied;
       if (paused) return json({ error: "Already paused" }, 409);
+      if (missedFirstMove) {
+        await forfeit();
+        break;
+      }
       if (leftForMover <= 0) {
         timeoutResult();
         break;
@@ -377,7 +454,7 @@ Deno.serve(async (req) => {
     case "adjudicate": {
       const denied = staffOnly();
       if (denied) return denied;
-      if (!["1-0", "0-1", "1/2-1/2"].includes(body.result)) return json({ error: "Pick a result" }, 400);
+      if (!["1-0", "0-1", "1/2-1/2", "0-0"].includes(body.result)) return json({ error: "Pick a result" }, 400);
       if (!paused) settleClock();
       finish(body.result, String(body.reason || "arbiter decision").slice(0, 80));
       log("adjudicated", { result: body.result });

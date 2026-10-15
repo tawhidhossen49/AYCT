@@ -482,12 +482,13 @@ function buildRing() {
   ring.innerHTML = "ABCDEFGH"
     .split("")
     .map(
-      (l) => `<article class="cyl__card">
+      // The Selection Round ranks each group holds: A 1, 9, 17, 25 and so on.
+      (l, i) => `<article class="cyl__card">
         <div class="row between"><span class="eyebrow">Group</span><span class="num xs dim">4 players</span></div>
         <p class="letter chrome-text">${l}</p>
         <div>
-          <p>Round robin over three rounds. The top two reach the round of 16.</p>
-          <div class="pots mt-3"><span>P1</span><span>P2</span><span>P3</span><span>P4</span></div>
+          <p>Double round robin over six rounds. The top two reach the round of 16.</p>
+          <div class="pots mt-3" title="Selection Round ranks">${[0, 1, 2, 3].map((s) => `<span>#${s * 8 + i + 1}</span>`).join("")}</div>
         </div>
       </article>`,
     )
