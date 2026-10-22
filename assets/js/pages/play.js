@@ -364,7 +364,7 @@ function seriesNote(m) {
   const tie = tieOf(m);
   if (!tie) return "";
   const s = seriesState(tie);
-  const name = (id) => esc(nameOf(id).split(" ")[0]);
+  const name = (id) => esc(nameOf(id));
   return `${name(tie.white_id)} ${formatPoints(s.a)}-${formatPoints(s.b)} ${name(tie.black_id)}`;
 }
 

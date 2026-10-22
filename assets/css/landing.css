@@ -227,47 +227,121 @@
 
 /* ---------------------------------------------------------------- road to the crown */
 
-.road { position: relative; }
-.road__pin { position: relative; height: 100svh; display: flex; align-items: center; overflow: hidden; }
-.road__head { position: absolute; top: calc(var(--nav-h) + 3.5rem); left: 0; right: 0; width: var(--container); margin: 0 auto; display: flex; justify-content: space-between; align-items: flex-end; gap: 2rem; }
+/* A vertical ride. The left column (sticky) holds the heading and the meter:
+   the players-left count, a field of 32 dots that switch off stage by stage,
+   and the stage now in view. The stages scroll up the right column along a
+   spine that fills as you go. Native sticky, no pinning, so the page scrolls
+   normally and every effect runs backwards on the way up. */
+.road { position: relative; padding-block: clamp(5rem, 10vw, 8rem) clamp(4rem, 8vw, 7rem); }
+.road__grid { width: var(--container); margin: 0 auto; display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: clamp(2rem, 6vw, 6rem); }
+.road__side { position: sticky; top: calc(var(--nav-h) + 2rem); align-self: start; }
+/* Two lines, "Thirty-two in. / One out.", sized to the column. */
+.road__side { container-type: inline-size; }
+.road__head .h2 { white-space: nowrap; font-size: clamp(1.9rem, min(3.4vw, 6.4vh), 4rem); }
+/* Sized to the column itself, so the longer line always fits it. */
+@supports (font-size: 1cqi) { .road__head .h2 { font-size: clamp(1.6rem, min(9.6cqi, 6.4vh), 4rem); } }
+.road__meter { margin-top: clamp(1.25rem, 4vh, 3rem); }
 .road__count {
   font-family: var(--font-mono);
   font-weight: 600;
-  font-size: clamp(6rem, 16vw, 15rem);
+  font-size: clamp(4.5rem, min(11vw, 15vh), 11rem);
   line-height: 0.8;
   letter-spacing: -0.06em;
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
 }
-.road__count small { display: block; margin-top: 0.8rem; font-size: 0.72rem; letter-spacing: 0.24em; text-transform: uppercase; color: var(--fg-dim); font-weight: 500; text-align: right; }
-.road__track { display: flex; gap: 1.25rem; padding-left: max(4vw, calc((100vw - 1280px) / 2)); padding-top: 12rem; will-change: transform; }
+.road__count span { display: inline-block; min-width: 2ch; }
+.road__count small { margin-bottom: 0.6rem; font-size: 0.72rem; letter-spacing: 0.24em; text-transform: uppercase; color: var(--fg-dim); font-weight: 500; -webkit-text-fill-color: var(--fg-dim); }
+.road__now { margin-top: 1.25rem; font-family: var(--font-mono); font-size: 0.74rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--fg-muted); }
+.road__now .dim { margin-right: 0.5rem; }
+
+/* The field: 32 players. A dot switches off when its player is knocked out;
+   the last one left becomes the champion. */
+.road__field { display: grid; grid-template-columns: repeat(8, 14px); gap: clamp(6px, 1.1vh, 10px) 10px; margin-top: clamp(1rem, 3vh, 2rem); }
+.road__field i {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--chrome);
+  box-shadow: 0 0 10px rgb(255 255 255 / 0.35);
+  transition: transform 0.6s var(--ease), opacity 0.6s var(--ease), background-color 0.6s var(--ease), box-shadow 0.6s var(--ease);
+  transition-delay: var(--d, 0s);
+}
+.road__field i.out { opacity: 0.18; transform: scale(0.45); box-shadow: none; }
+.road.is-crowned .road__field i.champ { transform: scale(1.9); background: #fff; box-shadow: 0 0 0 4px rgb(255 255 255 / 0.12), 0 0 28px 6px rgb(255 255 255 / 0.55); }
+
+/* The stages, on a spine. */
+.road__list { position: relative; list-style: none; margin: 0; padding: 30vh 0 8vh 3.25rem; display: grid; gap: 34vh; }
+.road__list::before { content: ""; position: absolute; left: 0.5rem; top: 0; bottom: 0; width: 1px; background: linear-gradient(to bottom, transparent, var(--edge-2) 12%, var(--edge-2) 88%, transparent); }
+.road__fill { position: absolute; left: 0.5rem; top: 0; bottom: 0; width: 1px; pointer-events: none; }
+.road__fill span { position: absolute; inset: 0; background: linear-gradient(to bottom, rgb(255 255 255 / 0), #fff 30%, #fff); box-shadow: 0 0 12px rgb(255 255 255 / 0.6); transform-origin: top; transform: scaleY(0); }
+.stage { position: relative; }
+@media (min-width: 900px) { .stage { perspective: 1400px; } }
+.stage::before {
+  /* The stage's node on the spine. */
+  content: "";
+  position: absolute;
+  left: calc(-3.25rem + 0.5rem - 6px);
+  top: 2.2rem;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--void);
+  border: 1px solid var(--edge-2);
+  transition: background-color 0.5s var(--ease), border-color 0.5s var(--ease), box-shadow 0.5s var(--ease);
+}
+.stage.is-past::before, .stage.is-active::before { background: #fff; border-color: #fff; }
+.stage.is-active::before { box-shadow: 0 0 0 6px rgb(255 255 255 / 0.1), 0 0 20px rgb(255 255 255 / 0.7); }
 .stage-card {
   position: relative;
-  flex: 0 0 min(80vw, 400px);
-  min-height: 21rem;
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  padding: clamp(1.6rem, 3vw, 2.4rem);
   overflow: hidden;
+  transition: border-color 0.5s var(--ease), box-shadow 0.5s var(--ease);
+  transform-origin: 50% 100%;
 }
+.stage.is-active .stage-card { border-color: var(--edge-2); box-shadow: 0 30px 80px -40px rgb(228 231 236 / 0.35); }
 .stage-card .step { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.24em; color: var(--fg-dim); text-transform: uppercase; }
-.stage-card h3 { font-family: var(--font-display); font-stretch: 125%; font-weight: 800; text-transform: uppercase; font-size: 1.7rem; line-height: 1; margin-top: 1rem; }
-.stage-card p { color: var(--fg-muted); font-size: var(--text-sm); margin-top: 1rem; }
-.stage-card .players { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 1.5rem; }
-.stage-card .players i { width: 9px; height: 9px; border-radius: 50%; background: var(--chrome); box-shadow: 0 0 8px rgb(255 255 255 / 0.4); }
-.stage-card .players i.out { background: transparent; border: 1px solid var(--edge-2); box-shadow: none; }
+.stage-card h3 { font-family: var(--font-display); font-stretch: 125%; font-weight: 800; text-transform: uppercase; font-size: clamp(1.6rem, 2.6vw, 2.3rem); line-height: 1; margin-top: 1rem; }
+.stage-card p:not(.step) { color: var(--fg-muted); font-size: var(--text-sm); margin-top: 1rem; max-width: 46ch; }
 .stage-card.final { border-color: var(--edge-2); box-shadow: 0 0 80px -20px rgb(228 231 236 / 0.35); }
-.stage-card.final .trophy { position: absolute; right: -0.1em; bottom: -0.25em; font-size: 12rem; line-height: 1; color: rgb(255 255 255 / 0.06); }
-/* Phones and tablets: the same pinned ride, with the heading above the cards. */
+.stage-card.final .trophy { position: absolute; right: -0.1em; bottom: -0.25em; font-size: 11rem; line-height: 1; color: rgb(255 255 255 / 0.06); }
+.road__crown { display: flex; align-items: center; gap: 1rem; padding-top: 1rem; }
+.road__crown i { font-size: clamp(2.2rem, 4vw, 3.2rem); color: var(--chrome); }
+.road__crown .display { font-size: clamp(2.2rem, 5vw, 4.4rem); line-height: 1; text-transform: uppercase; }
+
+/* Phones and tablets: one column. The heading scrolls away; the meter stays
+   as a slim bar under the nav (count, dots, stage) while the cards pass. */
 @media (max-width: 899px) {
-  .road__pin { align-items: center; padding-top: calc(var(--nav-h) + 10rem); padding-bottom: 1.5rem; }
-  .road__head { top: calc(var(--nav-h) + 2rem); gap: 1rem; }
-  .road__head .h2 { font-size: clamp(1.6rem, 7.4vw, 2.6rem); }
-  .road__count { font-size: clamp(3.6rem, 19vw, 7rem); }
-  .road__count small { margin-top: 0.5rem; font-size: 0.6rem; }
-  .road__track { padding-top: 0; padding-left: 4vw; gap: 0.9rem; }
-  .stage-card { flex-basis: min(78vw, 380px); min-height: min(19rem, 44svh); padding: 1.5rem; }
-  .stage-card h3 { font-size: clamp(1.25rem, 6.2vw, 1.7rem); }
-  .stage-card.final .trophy { font-size: 9rem; }
+  .road { padding-block: 4.5rem 3.5rem; }
+  .road__grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .road__side { display: contents; }
+  .road__meter {
+    position: sticky;
+    top: calc(var(--nav-h) + 0.5rem);
+    z-index: 2;
+    margin: 1.75rem -0.5rem 0;
+    padding: 0.8rem 1rem;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 1rem;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-lg);
+    background: #0b0b0e;
+    box-shadow: 0 12px 30px -12px rgb(0 0 0 / 0.9);
+  }
+  .road__count { font-size: 2.9rem; line-height: 0.85; gap: 0; flex-direction: column; align-items: flex-start; grid-row: span 2; }
+  .road__count small { margin: 0.35rem 0 0; font-size: 0.55rem; letter-spacing: 0.18em; }
+  .road__field { grid-template-columns: repeat(16, minmax(0, 8px)); gap: 5px; margin-top: 0; justify-content: start; }
+  .road__field i { width: 8px; height: 8px; box-shadow: none; }
+  .road.is-crowned .road__field i.champ { transform: scale(1.8); box-shadow: 0 0 12px 3px rgb(255 255 255 / 0.6); }
+  .road__now { margin-top: 0.6rem; font-size: 0.62rem; letter-spacing: 0.16em; }
+  .road__head .h2 { white-space: normal; font-size: clamp(2rem, 9vw, 3rem); }
+  .road__list { padding: 3rem 0 0 1.9rem; gap: 2.25rem; }
+  .road__list::before, .road__fill { left: 0.3rem; }
+  .stage::before { left: calc(-1.9rem + 0.3rem - 5px); top: 1.7rem; width: 11px; height: 11px; }
+  .stage-card .trophy { font-size: 8rem; }
 }
 
 /* ---------------------------------------------------------------- group ring */

@@ -2,7 +2,7 @@
 
 **Concept.** A black-and-chrome stage where 32 young players enter and one leaves as champion. The page tells that story as you scroll: the field narrows 32 → 16 → 8 → 4 → 2 → 1 while the chrome pieces from the poster drift through the dark.
 
-**Signature moment.** "The Road to the Crown": a pinned chapter where a giant number counts down 32 → 16 → 8 → 4 → 2 → 1 as the stage cards slide past, ending on a spotlit trophy.
+**Signature moment.** "The Road to the Crown": a vertical ride where the stage cards rise up a glowing spine past a sticky meter. A giant number counts down 32 → 16 → 8 → 4 → 2 → 1 and a field of 32 dots switches off stage by stage until one champion dot glows. Scrolling up plays it in reverse.
 
 ## Public landing (`index.html`)
 
@@ -14,7 +14,7 @@
 | 3 | Ticker | Rhythm break | Infinite band: 32 players · 8 groups · 130 games · one champion | speeds up with scroll | no |
 | 4 | Manifesto | Why it matters | Word-by-word scroll highlight | words light up as you scroll | no |
 | 5 | Numbers | Format at a glance | Glass stat cards: 32 / 8 / 64 / 10+5 | counters roll up | no |
-| 6 | Road to the Crown | **Signature** | Pinned horizontal rail: Group stage, Round of 16, Quarterfinals, Semifinals, Final, with the giant 32 → 1 counter | scrubbed horizontal travel | no |
+| 6 | Road to the Crown | **Signature** | Vertical stages (Selection Round, Group stage, Round of 16, Quarterfinals, Semifinals, Final, Champion) on a spine; sticky meter with the 32 → 1 counter, 32-dot field and current stage (phones: a slim sticky bar) | native sticky, no pin; cards scrubbed in with a tilt (phones: simple rise), spine fill scrubbed, all reversible | no |
 | 7 | Eight groups | Show the group stage | Curved cylinder carousel of glass cards A–H ("4 players, top 2 advance") | cylinder rotates with scroll | no |
 | 8 | Play live | The portal's killer feature | Split: a real chessboard replaying a famous game (Morphy, Paris 1858) + feature list: server-checked moves, chess clocks, draw offers, live commentary | board autoplays when in view | no |
 | 9 | Who it's for | Roles | Stacked perspective card deck: Players, Moderators, Commentators, Admins | cards fly off as you scroll | no |

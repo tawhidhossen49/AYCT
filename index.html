@@ -229,42 +229,65 @@
 
     <!-- 6. Road to the Crown -->
     <section class="road" id="road">
-      <div class="road__pin">
-        <div class="road__head">
-          <div>
+      <!-- A vertical ride: the stages scroll up past a sticky meter that counts
+           players out and switches off their dots. Scrolling back up plays it in
+           reverse. Phones keep the meter as a slim bar under the nav. -->
+      <div class="road__grid">
+        <div class="road__side">
+          <div class="road__head">
             <p class="eyebrow">The road to the crown</p>
             <h2 class="h2 mt-4" data-split>Thirty-two <span class="soft">in.</span><br>One <span class="soft">out.</span></h2>
           </div>
-          <div class="road__count chrome-text" aria-live="polite"><span data-road-count>32</span><small>players left</small></div>
+          <div class="road__meter">
+            <div class="road__count chrome-text" aria-live="polite"><span data-road-count>32</span><small>players left</small></div>
+            <div class="road__field" data-field aria-hidden="true"></div>
+            <p class="road__now"><span class="dim">Now</span> <span data-road-now>Selection Round</span></p>
+          </div>
         </div>
 
-        <div class="road__track">
-          <article class="panel stage-card" data-left="32">
-            <div><p class="step">Lichess · 10 rounds · 5+0</p><h3>Selection Round</h3><p>An open Swiss on 4 February. The top 32 qualify and are ranked 1 to 32. Group A gets ranks 1, 9, 17 and 25, Group B 2, 10, 18 and 26, and so on to Group H.</p></div>
-            <div class="players" data-dots="32" data-keep="32"></div>
-          </article>
-          <article class="panel stage-card" data-left="32">
-            <div><p class="step">6 rounds · 96 games · 5+0</p><h3>Group stage</h3><p>Eight groups of four. Everyone plays everyone twice, once with each colour. Win 1, draw ½. The top two go through.</p></div>
-            <div class="players" data-dots="32" data-keep="32"></div>
-          </article>
-          <article class="panel stage-card" data-left="16">
-            <div><p class="step">8 series · 16 games · 10+0</p><h3>Round of 16</h3><p>Group winners meet a runner-up from the far side: A1 against H2, H1 against A2, and so on. Two games, colours reversed. Level? A 3+2 tiebreak decides.</p></div>
-            <div class="players" data-dots="32" data-keep="16"></div>
-          </article>
-          <article class="panel stage-card" data-left="8">
-            <div><p class="step">4 series · 8 games · 10+5</p><h3>Quarterfinals</h3><p>Eight players left. Two games each; the better-ranked player has White in game one.</p></div>
-            <div class="players" data-dots="32" data-keep="8"></div>
-          </article>
-          <article class="panel stage-card" data-left="4">
-            <div><p class="step">2 series · 4 games · 15+5</p><h3>Semifinals</h3><p>Four players, two series, one seat each in the final. The losers play a 15+10 series for third place.</p></div>
-            <div class="players" data-dots="32" data-keep="4"></div>
-          </article>
-          <article class="panel stage-card final" data-left="1">
-            <i class="ph-fill ph-trophy trophy" aria-hidden="true"></i>
-            <div><p class="step">4 games · 25+2</p><h3>The final</h3><p>Two players, four games, every one of them played. The winner is this year's champion.</p></div>
-            <div class="players" data-dots="32" data-keep="1"></div>
-          </article>
-        </div>
+        <ol class="road__list">
+          <li class="road__fill" aria-hidden="true"><span></span></li>
+          <li class="stage" data-left="32" data-name="Selection Round">
+            <article class="panel stage-card">
+              <p class="step">Lichess · 10 rounds · 5+0</p><h3>Selection Round</h3>
+              <p>An open Swiss on 4 February. The top 32 qualify and are ranked 1 to 32. Group A gets ranks 1, 9, 17 and 25, Group B 2, 10, 18 and 26, and so on to Group H.</p>
+            </article>
+          </li>
+          <li class="stage" data-left="32" data-name="Group stage">
+            <article class="panel stage-card">
+              <p class="step">6 rounds · 96 games · 5+0</p><h3>Group stage</h3>
+              <p>Eight groups of four. Everyone plays everyone twice, once with each colour. Win 1, draw ½. The top two go through.</p>
+            </article>
+          </li>
+          <li class="stage" data-left="16" data-name="Round of 16">
+            <article class="panel stage-card">
+              <p class="step">8 series · 16 games · 10+0</p><h3>Round of 16</h3>
+              <p>Group winners meet a runner-up from the far side: A1 against H2, H1 against A2, and so on. Two games, colours reversed. Level? A 3+2 tiebreak decides.</p>
+            </article>
+          </li>
+          <li class="stage" data-left="8" data-name="Quarterfinals">
+            <article class="panel stage-card">
+              <p class="step">4 series · 8 games · 10+5</p><h3>Quarterfinals</h3>
+              <p>Eight players left. Two games each; the better-ranked player has White in game one.</p>
+            </article>
+          </li>
+          <li class="stage" data-left="4" data-name="Semifinals">
+            <article class="panel stage-card">
+              <p class="step">2 series · 4 games · 15+5</p><h3>Semifinals</h3>
+              <p>Four players, two series, one seat each in the final. The losers play a 15+10 series for third place.</p>
+            </article>
+          </li>
+          <li class="stage" data-left="2" data-name="The final">
+            <article class="panel stage-card final">
+              <i class="ph-fill ph-trophy trophy" aria-hidden="true"></i>
+              <p class="step">4 games · 25+2</p><h3>The final</h3>
+              <p>Two players, four games, every one of them played.</p>
+            </article>
+          </li>
+          <li class="stage stage--crown" data-left="1" data-name="Champion">
+            <p class="road__crown"><i class="ph-fill ph-crown-simple" aria-hidden="true"></i><span class="display chrome-text">One champion.</span></p>
+          </li>
+        </ol>
       </div>
     </section>
 

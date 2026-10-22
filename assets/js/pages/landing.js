@@ -409,69 +409,90 @@ function manifesto() {
 
 // ---------------------------------------------------------------- road to the crown
 
+// The field of 32 dots beside the stages. Each dot has a rank: the dots with
+// a rank below the players-left count stay lit, so 32 -> 16 -> 8 ... knocks
+// out a scattered half each time, and rank 0 is the champion. The order is
+// fixed (a seeded shuffle), so the field looks the same on every visit.
 function buildDots() {
-  document.querySelectorAll("[data-dots]").forEach((el) => {
-    const total = Number(el.dataset.dots);
-    const keep = Number(el.dataset.keep);
-    el.innerHTML = Array.from({ length: total }, (_, i) => `<i class="${i < keep ? "" : "out"}"></i>`).join("");
-    el.setAttribute("aria-label", `${keep} of ${total} players left`);
-  });
+  const field = document.querySelector("[data-field]");
+  if (!field) return;
+  const ranks = Array.from({ length: 32 }, (_, i) => i);
+  let seed = 7;
+  for (let i = ranks.length - 1; i > 0; i--) {
+    seed = (seed * 9301 + 49297) % 233280;
+    const j = Math.floor((seed / 233280) * (i + 1));
+    [ranks[i], ranks[j]] = [ranks[j], ranks[i]];
+  }
+  field.innerHTML = ranks
+    .map((r) => `<i data-rank="${r}" class="${r === 0 ? "champ" : ""}" style="--d:${((r % 16) * 0.025).toFixed(3)}s"></i>`)
+    .join("");
 }
 
+// Scrolling down, each stage that reaches the middle of the screen becomes
+// the current one: the count drops, its knocked-out dots switch off and the
+// spine fills to it. Scrolling up undoes it step by step. On a computer the
+// cards are scrubbed in with a slight tilt and dim as they pass; on phones
+// they simply rise in (and sink back out going up), which costs next to
+// nothing while scrolling.
 function road() {
+  const section = document.querySelector(".road");
   const counter = document.querySelector("[data-road-count]");
-  const cards = gsap.utils.toArray(".stage-card");
-  const setCount = (n) => {
-    if (counter.textContent === String(n)) return;
-    gsap.fromTo(counter, { yPercent: 30, autoAlpha: 0.2 }, { yPercent: 0, autoAlpha: 1, duration: 0.5, ease: "expo.out" });
-    counter.textContent = n;
-  };
+  const nowEl = document.querySelector("[data-road-now]");
+  const dots = [...document.querySelectorAll("[data-field] i")];
+  const stages = gsap.utils.toArray(".road .stage");
+  let current = null;
 
-  const mm = gsap.matchMedia();
-  mm.add("(min-width: 900px)", () => {
-    const track = document.querySelector(".road__track");
-    const distance = () => track.scrollWidth - window.innerWidth + window.innerWidth * 0.08;
-    gsap.to(track, {
-      x: () => -distance(),
-      ease: "none",
-      scrollTrigger: {
-        trigger: ".road__pin",
-        start: "top top",
-        end: () => `+=${distance()}`,
-        pin: true,
-        scrub: 0.8,
-        anticipatePin: 1,
-        invalidateOnRefresh: true,
-        onUpdate: (self) => {
-          const i = Math.min(cards.length - 1, Math.floor(self.progress * cards.length * 0.999));
-          setCount(cards[i].dataset.left);
-        },
-      },
+  const show = (i) => {
+    if (i === current) return;
+    const goingDown = current === null || i > current;
+    current = i;
+    const stage = stages[Math.max(0, i)];
+    const left = i < 0 ? 32 : Number(stage.dataset.left);
+    if (counter.textContent !== String(left)) {
+      counter.textContent = left;
+      gsap.fromTo(counter, { yPercent: goingDown ? 35 : -35, autoAlpha: 0.15 }, { yPercent: 0, autoAlpha: 1, duration: 0.55, ease: "expo.out", overwrite: true });
+    }
+    nowEl.textContent = stage.dataset.name;
+    dots.forEach((d) => d.classList.toggle("out", Number(d.dataset.rank) >= left));
+    section.classList.toggle("is-crowned", left === 1);
+    stages.forEach((s, k) => {
+      s.classList.toggle("is-active", k === i);
+      s.classList.toggle("is-past", k < i);
     });
-    gsap.from(cards, { y: 80, autoAlpha: 0, stagger: 0.08, duration: 1, ease: "power3.out", scrollTrigger: { trigger: ".road__pin", start: "top 70%", once: true } });
+  };
+  show(-1);
+
+  stages.forEach((stage, i) => {
+    ScrollTrigger.create({
+      trigger: stage,
+      start: "top 60%",
+      end: "bottom 60%",
+      onEnter: () => show(i),
+      onEnterBack: () => show(i),
+      onLeaveBack: () => show(i - 1),
+    });
   });
-  // Phones and tablets: the same pinned ride, with cards sized to the screen.
-  mm.add("(max-width: 899px)", () => {
-    const track = document.querySelector(".road__track");
-    const distance = () => track.scrollWidth - window.innerWidth + window.innerWidth * 0.06;
-    gsap.to(track, {
-      x: () => -distance(),
-      ease: "none",
-      scrollTrigger: {
-        trigger: ".road__pin",
-        start: "top top",
-        end: () => `+=${distance() * 1.15}`,
-        pin: true,
-        scrub: 0.6,
-        anticipatePin: 1,
-        invalidateOnRefresh: true,
-        onUpdate: (self) => {
-          const i = Math.min(cards.length - 1, Math.floor(self.progress * cards.length * 0.999));
-          setCount(cards[i].dataset.left);
-        },
-      },
-    });
-    gsap.from(cards, { y: 60, autoAlpha: 0, stagger: 0.08, duration: 1, ease: "power3.out", scrollTrigger: { trigger: ".road__pin", start: "top 70%", once: true } });
+
+  // The spine fills from the first stage to the last.
+  gsap.fromTo(
+    ".road__fill span",
+    { scaleY: 0 },
+    { scaleY: 1, ease: "none", scrollTrigger: { trigger: ".road__list", start: "top 60%", end: "bottom 60%", scrub: lite ? true : 0.5 } },
+  );
+
+  stages.forEach((stage) => {
+    const card = stage.querySelector(".stage-card, .road__crown");
+    if (lite) {
+      gsap.fromTo(card, { y: 48, autoAlpha: 0 }, {
+        y: 0, autoAlpha: 1, duration: 0.7, ease: "power3.out",
+        scrollTrigger: { trigger: stage, start: "top 88%", toggleActions: "play none none reverse" },
+      });
+      return;
+    }
+    gsap
+      .timeline({ scrollTrigger: { trigger: stage, start: "top bottom", end: "bottom top", scrub: 0.6 } })
+      .fromTo(card, { y: 140, rotateX: 16, scale: 0.92, autoAlpha: 0 }, { y: 0, rotateX: 0, scale: 1, autoAlpha: 1, ease: "power2.out", duration: 0.42 })
+      .to(card, { y: -50, scale: 0.97, autoAlpha: 0.32, ease: "power1.in", duration: 0.3 }, 0.7);
   });
 }
 

@@ -94,7 +94,7 @@ function card(tie) {
   if (live) foot = `${liveTag()} <span>${live.game_kind === "game" ? `Game ${live.game_no}` : live.game_kind === "tiebreak" ? "Tiebreak" : "Decider"}</span>`;
   else if (tie.winner_id) {
     const how = s.decider?.status === "completed" ? "after the decider" : s.tiebreak?.status === "completed" ? "after the tiebreak" : "";
-    foot = `${esc(store.profileById.get(tie.winner_id)?.full_name.split(" ")[0] ?? "")} goes through${how ? ` ${how}` : ""}`;
+    foot = `${esc(store.profileById.get(tie.winner_id)?.full_name ?? "")} goes through${how ? ` ${how}` : ""}`;
   } else if (s.decider) foot = `Decider ${s.decider.scheduled_at ? `· ${formatTime(s.decider.scheduled_at)}` : ""}`;
   else if (s.tiebreak) foot = `Level · tiebreak ${s.tiebreak.scheduled_at ? `at ${formatTime(s.tiebreak.scheduled_at)}` : "to come"}`;
   else if (next?.scheduled_at) foot = `Game ${next.game_no} · ${formatDate(next.scheduled_at)}, ${formatTime(next.scheduled_at)}`;
