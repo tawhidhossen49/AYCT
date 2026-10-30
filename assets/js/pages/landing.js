@@ -79,10 +79,6 @@ function startCountdown(cd) {
 Promise.all([edition, currentProfile()]).then(([data, profile]) => {
   const arrow = `<i class="ph-bold ph-arrow-right"></i>`;
   if (profile) {
-    document.querySelectorAll("[data-portal-link]").forEach((a) => {
-      a.href = "home.html";
-      if (a.classList.contains("nav-cta")) a.innerHTML = `Open portal <i class="ph-bold ph-arrow-up-right"></i>`;
-    });
     document.querySelectorAll("[data-register-link]").forEach((a) => {
       a.href = "home.html";
       a.removeAttribute("aria-disabled");
