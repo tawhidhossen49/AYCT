@@ -193,37 +193,105 @@
 .manifesto .word { display: inline-block; }
 .manifesto em { font-style: normal; }
 
-/* ---------------------------------------------------------------- format bento */
+/* ---------------------------------------------------------------- format console */
 
-.bento {
-  display: grid;
-  gap: 1rem;
-  margin-top: 3.5rem;
-  grid-template-columns: minmax(0, 1fr);
+/* A compact console: the board on one side, the current stage on the other,
+   the stage rail and the level-series rule underneath. */
+.section--tight { padding-bottom: clamp(72px, 8vw, 120px); }
+.fc-head { display: grid; gap: 0.9rem; }
+.fc-head .h2 { font-size: clamp(1.8rem, 2.9vw, 3rem); }
+.fc-head .lede { margin-top: 0; font-size: var(--text-sm); max-width: 44ch; }
+
+.fc { display: grid; grid-template-columns: minmax(0, 1fr); margin-top: 1.75rem; overflow: hidden; }
+.fc__k, .fc__step, .fc__panel dt, .fc__tab { font-family: var(--font-mono); text-transform: uppercase; }
+.fc__k { font-size: 0.68rem; font-weight: 500; letter-spacing: 0.2em; color: var(--fg-muted); }
+
+/* The board: a soft floor light, with registration marks in the corners. */
+.fc__board {
+  --mark: rgb(255 255 255 / 0.3);
+  position: relative;
+  margin: 0;
+  padding: 0.75rem 0.75rem 0;
+  background:
+    linear-gradient(var(--mark), var(--mark)) 0.75rem 0.75rem / 14px 1px,
+    linear-gradient(var(--mark), var(--mark)) 0.75rem 0.75rem / 1px 14px,
+    linear-gradient(var(--mark), var(--mark)) calc(100% - 0.75rem) 0.75rem / 14px 1px,
+    linear-gradient(var(--mark), var(--mark)) calc(100% - 0.75rem) 0.75rem / 1px 14px,
+    radial-gradient(ellipse 62% 52% at 50% 52%, rgb(228 231 236 / 0.11), transparent 72%);
+  background-repeat: no-repeat;
 }
-@media (min-width: 768px) {
-  .bento { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 15rem; }
-  .bento .b-hero { grid-column: span 2; grid-row: span 2; }
-  .bento .b-wide { grid-column: span 2; }
+.fc__board svg { display: block; width: 100%; max-width: 34rem; height: auto; margin-inline: auto; }
+.no-js .fc__board { display: none; }
+.fc__board figcaption { padding: 0.4rem 0.5rem 0.9rem; color: var(--fg-dim); font-size: var(--text-xs); text-align: center; }
+.fc-tile { fill: rgb(255 255 255 / 0.018); stroke: rgb(255 255 255 / 0.1); stroke-width: 0.7; transition: fill 600ms var(--ease), stroke 600ms var(--ease); }
+.fc-tile.alt { fill: rgb(255 255 255 / 0.05); }
+.fc-tile.on { fill: rgb(228 231 236 / 0.2); stroke: rgb(255 255 255 / 0.42); }
+.fc-notation { fill: var(--fg-dim); font-family: var(--font-mono); font-size: 10px; text-anchor: middle; }
+.fc__count { position: absolute; top: 1.7rem; left: 1.85rem; color: var(--fg-dim); font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.16em; line-height: 1.5; text-transform: uppercase; }
+.fc__count b { display: block; color: var(--fg); font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1; }
+.fc-glow { fill: rgb(0 0 0 / 0.55); }
+
+/* The stages: all stacked in one cell, so changing stage never moves the page. */
+.fc__panels { display: grid; gap: 2rem; padding: 1.25rem; }
+.fc.is-ready .fc__panels { gap: 0; }
+.fc.is-ready .fc__panel { grid-area: 1 / 1; visibility: hidden; }
+.fc.is-ready .fc__panel.is-on { visibility: visible; }
+.fc__step { font-size: 0.68rem; letter-spacing: 0.2em; color: var(--fg-dim); }
+.fc__name { margin-top: 0.4rem; font-family: var(--font-display); font-size: clamp(1.25rem, 2vw, 1.6rem); font-stretch: 125%; font-weight: 800; line-height: 1.1; text-transform: uppercase; }
+.fc__clock { width: fit-content; margin-top: 0.5rem; font-family: var(--font-mono); font-size: clamp(3.4rem, 6vw, 5rem); font-variant-numeric: tabular-nums; font-weight: 600; letter-spacing: -0.04em; line-height: 1.05; }
+.fc__sum { min-height: 4.2em; margin-top: 0.4rem; color: var(--fg-muted); font-size: var(--text-sm); max-width: 50ch; }
+.fc__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.7rem 1rem; margin: 0.9rem 0 0; padding-top: 0.9rem; border-top: 1px solid var(--edge); }
+.fc__panel dt { font-size: 0.62rem; letter-spacing: 0.16em; color: var(--fg-dim); }
+.fc__panel dd { margin: 0.15rem 0 0; font-size: var(--text-sm); font-weight: 700; }
+
+/* The rail: one tab per stage, its bar filling while the tour waits on it. */
+.fc__rail { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)) auto; align-items: stretch; border-block: 1px solid var(--edge); }
+.fc__tab { position: relative; min-height: 2.9rem; padding: 0.55rem 0.1rem 0.45rem; background: none; border: 0; color: var(--fg-dim); cursor: pointer; font-size: 0.64rem; letter-spacing: 0.08em; transition: color var(--base) var(--ease); }
+.fc__tab:hover, .fc__tab[aria-selected="true"] { color: var(--fg); }
+.fc__tab:focus-visible, .fc__pause:focus-visible { outline-offset: -3px; }
+.fc__tab .fc__label { display: none; }
+.fc__track { position: absolute; inset: -1px 0 auto; height: 2px; }
+.fc__track i { display: block; height: 100%; background: var(--chrome); box-shadow: 0 0 10px var(--glow); transform: scaleX(0); transform-origin: left; }
+.fc__tab.is-past .fc__track i, .fc__tab[aria-selected="true"] .fc__track i { transform: scaleX(1); }
+.fc__tab.is-past .fc__track i { opacity: 0.35; }
+.fc__pause { display: grid; place-items: center; width: 2.9rem; background: none; border: 0; border-left: 1px solid var(--edge); color: var(--fg-muted); cursor: pointer; font-size: 0.85rem; }
+.fc__pause:hover { color: var(--fg); }
+
+.fc__level { padding: 1rem 1.25rem 1.15rem; }
+.fc__level ol { display: grid; gap: 0.5rem; margin: 0.6rem 0 0; padding: 0; list-style: none; }
+.fc__level li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.1rem 0.6rem; }
+.fc__level strong { font-size: var(--text-sm); font-weight: 800; }
+.fc__level strong .num { color: var(--fg-muted); font-weight: 600; }
+.fc__level li > span { color: var(--fg-muted); font-size: var(--text-xs); }
+
+@media (min-width: 720px) {
+  .fc { grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); grid-template-areas: "board panels" "rail rail" "level level"; }
+  .fc__board { grid-area: board; border-right: 1px solid var(--edge); padding: 0.75rem 1rem 0; }
+  .fc__board svg { max-width: none; }
+  .fc__rail { grid-area: rail; }
+  .fc__panels { grid-area: panels; padding: 1.25rem 1.5rem; align-content: center; }
+  .fc__level { grid-area: level; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2.5rem; padding: 1rem 1.5rem; }
+  .fc__level ol { grid-template-columns: repeat(3, auto); justify-content: space-between; gap: 2rem; margin: 0; }
+  .fc__level li + li { position: relative; }
+  .fc__level li + li::before { content: "→"; position: absolute; left: -1.5rem; color: var(--fg-dim); font-family: var(--font-mono); font-size: var(--text-xs); }
 }
-.bento .panel { padding: 1.75rem; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; min-height: 12rem; }
-.bento .stat { font-family: var(--font-mono); font-weight: 600; font-size: clamp(3rem, 6vw, 5.2rem); line-height: 0.9; letter-spacing: -0.04em; }
-.bento .b-hero .stat { font-size: clamp(5rem, 13vw, 11rem); }
-.bento .label { font-weight: 800; font-size: var(--text-lg); margin-top: 0.75rem; }
-.bento p { color: var(--fg-muted); font-size: var(--text-sm); max-width: 36ch; }
-.bento .b-hero img {
-  position: absolute;
-  right: -14%;
-  top: -22%;
-  height: 165%;
-  width: auto;
-  max-width: none;
-  opacity: 0.7;
-  pointer-events: none;
-  -webkit-mask-image: linear-gradient(to left, black 45%, transparent 95%);
-  mask-image: linear-gradient(to left, black 45%, transparent 95%);
+@media (min-width: 900px) {
+  .fc-head { grid-template-columns: minmax(0, 1fr) minmax(0, 34ch); align-items: end; gap: 3rem; }
+  .fc__panels { padding: 1.6rem 2rem; }
+  .fc__level { padding-inline: 2rem; }
+  .fc__tab { font-size: 0.68rem; padding-block: 0.8rem 0.7rem; }
+  .fc__tab .fc__code { display: none; }
+  .fc__tab .fc__label { display: inline; }
 }
-.bento .b-hero > *:not(img) { position: relative; }
+@media (min-width: 900px) and (max-width: 1099px) {
+  .fc__tab { font-size: 0.6rem; letter-spacing: 0.04em; }
+}
+@media (max-width: 639px) {
+  .fc-notation { display: none; }
+}
+@media (min-width: 1100px) {
+  .fc__facts { grid-template-columns: repeat(4, auto); justify-content: space-between; }
+}
 
 /* ---------------------------------------------------------------- road to the crown */
 

@@ -9,17 +9,17 @@
 | # | Section | Purpose | Component | Motion | Clip? |
 |---|---|---|---|---|---|
 | 0 | Preloader | Brand moment while fonts load | Percentage ring around the logo | ring fills, iris opens into the hero | no |
-| 1 | Nav | Always there | Floating glass pill: logo, Format, Road, Groups, Play, FAQ, **Sign in** | hides on scroll down, returns on scroll up | no |
+| 1 | Nav | Always there | Floating glass pill: logo, Format, Enter, Road, Groups, Play, FAQ, **Register now** | hides on scroll down, returns on scroll up | no |
 | 2 | Hero | First impression | Scroll-driven film (180 frames): camera glides between chrome pieces to a lone king. Title above the distant king; "Think." left, "Play." right; "Become / Legendary." flanking the king | pinned 320vh (240vh phones), plays forward on scroll down and rewinds on scroll up, eased catch-up, final frame holds | **yes** (`assets/sequences/hero`) |
 | 3 | Ticker | Rhythm break | Infinite band: 32 players · 8 groups · 130 games · one champion | speeds up with scroll | no |
 | 4 | Manifesto | Why it matters | Word-by-word scroll highlight | words light up as you scroll | no |
-| 5 | Numbers | Format at a glance | Glass stat cards: 32 / 8 / 64 / 10+5 | counters roll up | no |
+| 5 | Format | Format at a glance | Compact console: 32 chrome pieces on a holographic board stand for the 32 players and clear stage by stage, beside each stage's clock and facts, with a stage rail and the level-series rule | self-running tour (pauses on hover, on a click and off screen), pieces move and lift off, clock digits decode | no |
 | 6 | Road to the Crown | **Signature** | Vertical stages (Selection Round, Group stage, Round of 16, Quarterfinals, Semifinals, Final, Champion) on a spine; sticky meter with the 32 → 1 counter, 32-dot field and current stage (phones: a slim sticky bar) | native sticky, no pin; cards scrubbed in with a tilt (phones: simple rise), spine fill scrubbed, all reversible | no |
 | 7 | Eight groups | Show the group stage | Curved cylinder carousel of glass cards A–H ("4 players, top 2 advance") | cylinder rotates with scroll | no |
 | 8 | Play live | The portal's killer feature | Split: a real chessboard replaying a famous game (Morphy, Paris 1858) + feature list: server-checked moves, chess clocks, draw offers, live commentary | board autoplays when in view | no |
 | 9 | Who it's for | Roles | Stacked perspective card deck: Players, Moderators, Commentators, Admins | cards fly off as you scroll | no |
 | 11 | FAQ | Answers | Glass accordion (who can join, how sign-in works, what if I miss my game, how draws are decided) | smooth expand | no |
-| 12 | Final CTA | Convert | Full-bleed rook with "Your move." + Sign in | image scales 1.12 → 1 | no |
+| 12 | Final CTA | Convert | Full-bleed king with "Your move." + Register now | image scales 1.12 → 1 | no |
 | 13 | Footer | Close | Giant "AMAZE" wordmark clipped at the bottom, links, tagline | letters rise in | no |
 
 Persistent: scroll-progress ring (bottom right), cursor dot that grows over links (desktop only), everything off under reduced motion.

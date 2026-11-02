@@ -148,37 +148,118 @@
       </div>
     </section>
 
-    <!-- 5. Format -->
-    <section class="section" id="format" style="padding-top:0">
+    <!-- 5. Format: a chess board holds 32 pieces and the tournament 32 players,
+         so each piece is a player and the board clears stage by stage. The
+         stages are plain text here; landing.js turns them into the console. -->
+    <section class="section section--tight" id="format" style="padding-top:0">
       <div class="wrap-x">
-        <h2 class="h2" data-split>The format, <span class="soft">at a glance</span></h2>
-        <p class="lede" data-reveal>It starts with an open Selection Round on Lichess. The top 32 are placed into eight groups by rank, every group plays a double round robin, and the top two go on to knockout series all the way to the final.</p>
+        <div class="fc-head">
+          <h2 class="h2" data-split>The format, <span class="soft">at a glance</span></h2>
+          <p class="lede" data-reveal>From a Selection Round on Lichess to a four-game final: seven stages, 130 games plus tiebreaks, one champion.</p>
+        </div>
 
-        <div class="bento" data-stagger>
-          <article class="panel lit b-hero">
-            <img src="assets/brand/rook.webp" alt="" aria-hidden="true" width="570" height="1600" loading="lazy">
-            <span class="eyebrow">Field</span>
-            <div>
-              <p class="stat chrome-text" data-count="32">32</p>
-              <p class="label">Players</p>
-              <p class="mt-2">The top 32 of the Selection Round, ranked 1 to 32 and placed into eight groups of four by that rank.</p>
-            </div>
-          </article>
-          <article class="panel">
-            <span class="eyebrow">Groups</span>
-            <div><p class="stat" data-count="8">8</p><p class="label">Groups of four</p></div>
-          </article>
-          <article class="panel">
-            <span class="eyebrow">Games</span>
-            <div><p class="stat" data-count="130">130</p><p class="label">Games, plus tiebreaks</p></div>
-          </article>
-          <article class="panel b-wide">
-            <span class="eyebrow">Clock</span>
-            <div class="row between wrap gap-4">
-              <p class="stat">5<span class="dim">→</span>25</p>
-              <p>Minutes on the clock grow with the stakes: 5+0 in the groups, 10+0 in the round of 16, 10+5 in the quarterfinals, 15+5 in the semifinals and 25+2 in the final. Run by the server, so it's the same on every screen.</p>
-            </div>
-          </article>
+        <div class="fc panel lit" data-format data-reveal>
+          <figure class="fc__board">
+            <p class="fc__count" aria-hidden="true"><b data-format-count>32</b>on the board</p>
+            <svg data-format-board viewBox="0 0 640 400" aria-hidden="true"></svg>
+            <figcaption>Every piece is a player. The board clears as the field narrows.</figcaption>
+          </figure>
+
+          <div class="fc__panels" data-format-panels>
+            <article class="fc__panel" data-code="SEL" data-label="Selection Round">
+              <p class="fc__step">Stage 1 of 7</p>
+              <h3 class="fc__name">Selection Round</h3>
+              <p class="fc__clock chrome-text">5+0</p>
+              <p class="fc__sum">4 February 2027 at 7:30 PM. The top 32 qualify, numbered 1 to 32. That rank sets their group and their colours later.</p>
+              <dl class="fc__facts">
+                <div><dt>System</dt><dd>Swiss</dd></div>
+                <div><dt>Games</dt><dd>10 rounds</dd></div>
+                <div><dt>Field</dt><dd>Open to 32</dd></div>
+                <div><dt>Platform</dt><dd>Lichess</dd></div>
+              </dl>
+            </article>
+            <article class="fc__panel" data-code="GRP" data-label="Group stage">
+              <p class="fc__step">Stage 2 of 7</p>
+              <h3 class="fc__name">Group stage</h3>
+              <p class="fc__clock chrome-text">5+0</p>
+              <p class="fc__sum">Eight groups of four, filled by rank. Every pair plays twice with colours reversed, and the top two in each group go through.</p>
+              <dl class="fc__facts">
+                <div><dt>System</dt><dd>Double round robin</dd></div>
+                <div><dt>Games</dt><dd>6 rounds, 96 games</dd></div>
+                <div><dt>Field</dt><dd>32 to 16</dd></div>
+                <div><dt>Platform</dt><dd>AYCT</dd></div>
+              </dl>
+            </article>
+            <article class="fc__panel" data-code="R16" data-label="Round of 16">
+              <p class="fc__step">Stage 3 of 7</p>
+              <h3 class="fc__name">Round of 16</h3>
+              <p class="fc__clock chrome-text">10+0</p>
+              <p class="fc__sum">Group winners meet runners-up: A1&nbsp;v&nbsp;H2, H1&nbsp;v&nbsp;A2, D1&nbsp;v&nbsp;E2, E1&nbsp;v&nbsp;D2, C1&nbsp;v&nbsp;F2, F1&nbsp;v&nbsp;C2, B1&nbsp;v&nbsp;G2, G1&nbsp;v&nbsp;B2.</p>
+              <dl class="fc__facts">
+                <div><dt>System</dt><dd>Knockout series</dd></div>
+                <div><dt>Games</dt><dd>2 each, 16 in all</dd></div>
+                <div><dt>Field</dt><dd>16 to 8</dd></div>
+                <div><dt>Platform</dt><dd>AYCT</dd></div>
+              </dl>
+            </article>
+            <article class="fc__panel" data-code="QF" data-label="Quarterfinals">
+              <p class="fc__step">Stage 4 of 7</p>
+              <h3 class="fc__name">Quarterfinals</h3>
+              <p class="fc__clock chrome-text">10+5</p>
+              <p class="fc__sum">The winners of matches 1 and 2 meet, then 3 and 4, 5 and 6, 7 and 8. The better-ranked player has White in game 1.</p>
+              <dl class="fc__facts">
+                <div><dt>System</dt><dd>Knockout series</dd></div>
+                <div><dt>Games</dt><dd>2 each, 8 in all</dd></div>
+                <div><dt>Field</dt><dd>8 to 4</dd></div>
+                <div><dt>Platform</dt><dd>AYCT</dd></div>
+              </dl>
+            </article>
+            <article class="fc__panel" data-code="SF" data-label="Semifinals">
+              <p class="fc__step">Stage 5 of 7</p>
+              <h3 class="fc__name">Semifinals</h3>
+              <p class="fc__clock chrome-text">15+5</p>
+              <p class="fc__sum">Quarterfinal 1 meets quarterfinal 2, and 3 meets 4. The winners reach the final and the losers play for third place.</p>
+              <dl class="fc__facts">
+                <div><dt>System</dt><dd>Knockout series</dd></div>
+                <div><dt>Games</dt><dd>2 each, 4 in all</dd></div>
+                <div><dt>Field</dt><dd>4 to 2</dd></div>
+                <div><dt>Platform</dt><dd>AYCT</dd></div>
+              </dl>
+            </article>
+            <article class="fc__panel" data-code="3RD" data-label="Third place">
+              <p class="fc__step">Stage 6 of 7</p>
+              <h3 class="fc__name">Third place</h3>
+              <p class="fc__clock chrome-text">15+10</p>
+              <p class="fc__sum">The two semifinal losers play one last series for third place.</p>
+              <dl class="fc__facts">
+                <div><dt>System</dt><dd>Series</dd></div>
+                <div><dt>Games</dt><dd>2 games</dd></div>
+                <div><dt>Field</dt><dd>2 players</dd></div>
+                <div><dt>Platform</dt><dd>AYCT</dd></div>
+              </dl>
+            </article>
+            <article class="fc__panel" data-code="FIN" data-label="The final">
+              <p class="fc__step">Stage 7 of 7</p>
+              <h3 class="fc__name">The final</h3>
+              <p class="fc__clock chrome-text">25+2</p>
+              <p class="fc__sum">All four games are played, with colours alternating. At 2–2 the final goes to the tiebreak.</p>
+              <dl class="fc__facts">
+                <div><dt>System</dt><dd>Series</dd></div>
+                <div><dt>Games</dt><dd>4 games</dd></div>
+                <div><dt>Field</dt><dd>2 to 1</dd></div>
+                <div><dt>Platform</dt><dd>AYCT</dd></div>
+              </dl>
+            </article>
+          </div>
+
+          <div class="fc__level">
+            <h3 class="fc__k">Series level?</h3>
+            <ol>
+              <li><strong>Tiebreak <span class="num">3+2</span></strong><span>One game, colours reversed</span></li>
+              <li><strong>Decider <span class="num">3+2</span></strong><span>Lower rank picks the colour</span></li>
+              <li><strong>Drawn again</strong><span>Higher rank goes through</span></li>
+            </ol>
+          </div>
         </div>
       </div>
     </section>

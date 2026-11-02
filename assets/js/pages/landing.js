@@ -1,5 +1,6 @@
-// Public landing page: preloader, pinned hero, the road to the crown, the
-// ring of groups, a live demo board, the roles deck, and the footer.
+// Public landing page: preloader, pinned hero, the format console, the road
+// to the crown, the ring of groups, a live demo board, the roles deck, and
+// the footer.
 
 import { FORM_KINDS, formLinks, countdownOf } from "../registration.js";
 import { supabase } from "../supabase.js";
@@ -152,6 +153,7 @@ initSmoothScroll();
 navAutoHide();
 progressRing();
 cursorDot();
+formatConsole();
 
 // The hero film starts downloading right away, while the preloader shows.
 const heroCanvas = document.querySelector(".hv__canvas");
@@ -401,6 +403,249 @@ function manifesto() {
       scrollTrigger: { trigger: el, start: "top 78%", end: "bottom 45%", scrub: true },
     });
   });
+}
+
+// ---------------------------------------------------------------- format console
+
+// A chess board holds 32 pieces and the tournament 32 players, so each piece
+// is a player. Selection: the starting position. Groups: eight clusters of
+// four, dealt by rank. Knockout: pairs facing each other, half leaving each
+// round, until two kings are left for the final. The roster is in rank
+// order, so the pieces that stay are always the first in it.
+function formatConsole() {
+  const root = document.querySelector("[data-format]");
+  const svg = root.querySelector("[data-format-board]");
+  const stages = [...root.querySelectorAll(".fc__panel")];
+  const STEP = 5; // seconds on each stage during the tour
+  const [A, B, LEFT, TOP] = [38, 19, 320, 86];
+  const spot = ([f, r]) => ({ x: LEFT + (f - r) * A, y: TOP + (f + r) * B + B });
+
+  const roster = [["k", [4]], ["q", [3]], ["r", [0, 7]], ["b", [2, 5]], ["n", [1, 6]], ["p", [0, 1, 2, 3, 4, 5, 6, 7]]].flatMap(([type, files]) =>
+    files.flatMap((f) => {
+      const back = type === "p" ? 1 : 0;
+      return [{ type, white: true, home: [f, 7 - back] }, { type, white: false, home: [f, back] }];
+    }),
+  );
+  const blocks = [[0, 0], [2, 0], [1, 1], [3, 1], [0, 2], [2, 2], [1, 3], [3, 3]];
+  const facing = (files) => files.flatMap((f) => [[f, 4], [f, 3]]);
+  const layouts = [
+    roster.map((p) => p.home),
+    roster.map((_, i) => [blocks[i % 8][0] * 2 + ((i >> 3) & 1), blocks[i % 8][1] * 2 + (i >> 4)]),
+    facing([0, 1, 2, 3, 4, 5, 6, 7]),
+    facing([0, 2, 5, 7]),
+    facing([1, 6]),
+    [null, null, [3, 5], [5, 3]],
+    [[3, 5], [5, 3]],
+  ];
+
+  // Silhouettes of turned pieces, on a 40 by 64 grid with the foot at the bottom.
+  const foot = "M7 63c0-5 3-7 6-8h14c3 1 6 3 6 8z";
+  const shapes = {
+    p: `${foot}M13 55c3-8 4-14 3-19h8c-1 5 0 11 3 19zM12 37v-3h16v3zM20 13a10.5 10.5 0 1 1 0 21 10.5 10.5 0 0 1 0-21z`,
+    r: `${foot}M12 55l3-27h10l3 27zM10 28v-4l2-2V10h5v5h6v-5h5v12l2 2v4z`,
+    b: `${foot}M13 55c3-8 4-13 3-19h8c-1 6 0 11 3 19zM12 36v-3h16v3zM20 9c7 6 10 11 9 16-1 4-4 7-9 8-5-1-8-4-9-8-1-5 2-10 9-16zM20 2a3 3 0 1 1 0 6 3 3 0 0 1 0-6z`,
+    n: `${foot}M12 55c0-11 6-16 10-22l-8 4-5-1-2-5 13-14 1-7 5 5c9 3 13 13 12 40z`,
+    q: `${foot}M13 55c3-8 4-16 3-23h8c-1 7 0 15 3 23zM11 33v-3h18v3zM11 29L6 12l8 7 2-13 4 12 4-12 2 13 8-7-5 17zM20 0a2.6 2.6 0 1 1 0 5.2A2.6 2.6 0 0 1 20 0z`,
+    k: `${foot}M13 55c3-8 4-15 3-22h8c-1 7 0 14 3 22zM11 33v-3h18v3zM11 29c-5-7-3-13 4-13 2 0 4 1 5 3 1-2 3-3 5-3 7 0 9 6 4 13zM18 15V9h-4V5h4V0h4v5h4v4h-4v6z`,
+  };
+  const SIZE = { p: 38, r: 42, n: 45, b: 49, q: 54, k: 60 };
+
+  let squares = "";
+  for (let f = 0; f < 8; f++) {
+    for (let r = 0; r < 8; r++) {
+      const { x, y } = spot([f, r]);
+      squares += `<polygon class="fc-tile${(f + r) % 2 ? " alt" : ""}" data-sq="${f},${r}" points="${x},${y - B} ${x + A},${y} ${x},${y + B} ${x - A},${y}"/>`;
+    }
+  }
+  const edge = `${LEFT},${TOP} ${LEFT + 8 * A},${TOP + 8 * B} ${LEFT},${TOP + 16 * B} ${LEFT - 8 * A},${TOP + 8 * B}`;
+  // File letters and rank numbers along the two near edges.
+  const notation = [..."abcdefgh"]
+    .map((file, n) => {
+      const a = spot([n, 7]);
+      const b = spot([7, 7 - n]);
+      return `<text x="${a.x - 20}" y="${a.y + 27}">${file}</text><text x="${b.x + 20}" y="${b.y + 27}">${n + 1}</text>`;
+    })
+    .join("");
+  svg.innerHTML = `<defs>
+      <linearGradient id="fcW"><stop offset="0" stop-color="#8d929c"/><stop offset=".3" stop-color="#fff"/><stop offset=".55" stop-color="#b9bdc6"/><stop offset=".8" stop-color="#f4f5f7"/><stop offset="1" stop-color="#7d818b"/></linearGradient>
+      <linearGradient id="fcB"><stop offset="0" stop-color="#23252c"/><stop offset=".32" stop-color="#6d717c"/><stop offset=".55" stop-color="#1b1c22"/><stop offset=".82" stop-color="#3d4049"/><stop offset="1" stop-color="#101116"/></linearGradient>
+      <linearGradient id="fcScan"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+      <clipPath id="fcClip"><polygon points="${edge}"/></clipPath>
+      ${Object.entries(shapes).map(([k, d]) => `<symbol id="fc-${k}" viewBox="0 0 40 64" preserveAspectRatio="xMidYMax meet" overflow="visible"><path d="${d}"/></symbol>`).join("")}
+    </defs>
+    ${squares}
+    <polygon points="${edge}" fill="none" stroke="rgb(255 255 255 / .3)"/>
+    <g class="fc-notation">${notation}</g>
+    <g clip-path="url(#fcClip)"><rect data-scan x="-160" y="0" width="160" height="400" fill="url(#fcScan)"/></g>
+    <g data-pieces></g>`;
+
+  const tiles = [...svg.querySelectorAll(".fc-tile")];
+  const layer = svg.querySelector("[data-pieces]");
+  const scan = svg.querySelector("[data-scan]");
+  const pieces = roster.map((p) => {
+    const h = SIZE[p.type];
+    const w = (h * 40) / 64;
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    el.setAttribute("fill", `url(#${p.white ? "fcW" : "fcB"})`);
+    if (!p.white) el.setAttribute("stroke", "rgb(255 255 255 / .4)");
+    el.setAttribute("stroke-width", ".7");
+    el.innerHTML = `<ellipse class="fc-glow" rx="${w * 0.42}" ry="${w * 0.2}" stroke="none"/><use href="#fc-${p.type}" x="${-w / 2}" y="${2 - h}" width="${w}" height="${h}"/>`;
+    layer.append(el);
+    return { el, on: false, y: 0 };
+  });
+
+  // Puts the board in a stage. Pieces that leave rise and fade out.
+  const setBoard = (i, animate) => {
+    const lit = new Set(layouts[i].filter(Boolean).map(String));
+    root.querySelector("[data-format-count]").textContent = lit.size;
+    tiles.forEach((tile) => tile.classList.toggle("on", lit.has(tile.dataset.sq)));
+    pieces.forEach((p, k) => {
+      const sq = layouts[i][k];
+      const to = sq ? spot(sq) : null;
+      if (!animate) {
+        p.el.style.visibility = to ? "" : "hidden";
+        if (to) p.el.setAttribute("transform", `translate(${to.x} ${to.y})`);
+      } else if (to) {
+        if (!p.on) gsap.set(p.el, { x: to.x, y: to.y - 46, autoAlpha: 0 });
+        gsap.to(p.el, { x: to.x, y: to.y, autoAlpha: 1, duration: p.on ? 1 : 0.8, delay: k * 0.008, ease: p.on ? "expo.inOut" : "power3.out", overwrite: true });
+      } else if (p.on) {
+        gsap.to(p.el, { y: p.y - 46, autoAlpha: 0, duration: 0.55, delay: k * 0.006, ease: "power2.in", overwrite: true });
+      }
+      p.on = Boolean(to);
+      if (to) p.y = to.y;
+    });
+    // Back to front, so nearer pieces stand in front of further ones.
+    pieces.filter((p) => p.on).sort((a, b) => a.y - b.y).forEach((p) => layer.append(p.el));
+    if (animate) gsap.fromTo(scan, { attr: { x: -160 } }, { attr: { x: 640 }, duration: 1.1, ease: "power2.inOut" });
+  };
+
+  // The clock's digits run through numbers, then settle left to right.
+  const decoding = new Map();
+  const decode = (el) => {
+    el.dataset.text ??= el.textContent;
+    const text = el.dataset.text;
+    const state = { p: 0 };
+    decoding.get(el)?.kill();
+    decoding.set(el, gsap.to(state, {
+      p: 1,
+      duration: 0.65,
+      ease: "none",
+      onUpdate: () => {
+        const fixed = Math.floor(state.p * text.length);
+        el.textContent = [...text].map((c, n) => (n < fixed || c === "+" ? c : Math.floor(Math.random() * 10))).join("");
+      },
+      onComplete: () => (el.textContent = text),
+    }));
+  };
+
+  // The rail is built here, so without scripts the stages stay a plain list.
+  const rail = document.createElement("div");
+  rail.className = "fc__rail";
+  rail.setAttribute("role", "tablist");
+  rail.setAttribute("aria-label", "Tournament stages");
+  stages.forEach((stage, i) => {
+    stage.id = `fc-stage-${i}`;
+    stage.setAttribute("role", "tabpanel");
+    stage.setAttribute("aria-labelledby", `fc-tab-${i}`);
+    rail.insertAdjacentHTML("beforeend", `<button class="fc__tab" type="button" role="tab" id="fc-tab-${i}" aria-controls="fc-stage-${i}" aria-label="${stage.dataset.label}"><span class="fc__track"><i></i></span><span class="fc__code">${stage.dataset.code}</span><span class="fc__label">${stage.dataset.label}</span></button>`);
+  });
+  const tabs = [...rail.querySelectorAll(".fc__tab")];
+  root.querySelector("[data-format-panels]").before(rail);
+  root.classList.add("is-ready");
+
+  let current = 0;
+  let touring = motion;
+  let hovering = false;
+  let inView = false;
+  let begun = false;
+  let timer = null;
+
+  const pauseBtn = document.createElement("button");
+  pauseBtn.className = "fc__pause";
+  pauseBtn.type = "button";
+  const paintPause = () => {
+    pauseBtn.innerHTML = `<i class="ph-bold ph-${touring ? "pause" : "play"}" aria-hidden="true"></i>`;
+    pauseBtn.setAttribute("aria-label", touring ? "Pause the stage tour" : "Play the stage tour");
+  };
+  if (motion) {
+    paintPause();
+    rail.append(pauseBtn);
+  } else {
+    rail.style.gridTemplateColumns = "repeat(7, minmax(0, 1fr))";
+  }
+
+  const hold = () => timer?.paused(hovering || !inView);
+  const wait = () => {
+    timer?.kill();
+    timer = null;
+    gsap.set(rail.querySelectorAll(".fc__track i"), { clearProps: "transform" });
+    if (!touring) return;
+    timer = gsap.fromTo(tabs[current].querySelector(".fc__track i"), { scaleX: 0 }, { scaleX: 1, duration: STEP, ease: "none", onComplete: () => go((current + 1) % stages.length) });
+    hold();
+  };
+
+  const mark = (i) => {
+    current = i;
+    stages.forEach((s, k) => s.classList.toggle("is-on", k === i));
+    tabs.forEach((t, k) => {
+      t.setAttribute("aria-selected", String(k === i));
+      t.tabIndex = k === i ? 0 : -1;
+      t.classList.toggle("is-past", k < i);
+    });
+  };
+  const go = (i) => {
+    mark(i);
+    setBoard(i, motion);
+    if (!motion) return;
+    const parts = stages[i].children;
+    gsap.killTweensOf(parts);
+    gsap.fromTo(parts, { y: 14, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.7, ease: "power3.out", stagger: 0.05 });
+    decode(stages[i].querySelector(".fc__clock"));
+    wait();
+  };
+
+  // Choosing a stage ends the tour, so it stays on what they picked.
+  const pick = (i) => {
+    touring = false;
+    if (motion) paintPause();
+    go(i);
+  };
+  tabs.forEach((tab, i) => tab.addEventListener("click", () => pick(i)));
+  rail.addEventListener("keydown", (e) => {
+    const to = { ArrowRight: current + 1, ArrowLeft: current - 1, Home: 0, End: tabs.length - 1 }[e.key];
+    if (to === undefined || !e.target.closest(".fc__tab")) return;
+    e.preventDefault();
+    const i = (to + tabs.length) % tabs.length;
+    pick(i);
+    tabs[i].focus();
+  });
+  pauseBtn.addEventListener("click", () => {
+    touring = !touring;
+    paintPause();
+    wait();
+  });
+
+  // The tour waits while the pointer is on it, and while it's off screen.
+  root.addEventListener("pointerenter", (e) => {
+    hovering = e.pointerType === "mouse";
+    hold();
+  });
+  root.addEventListener("pointerleave", () => {
+    hovering = false;
+    hold();
+  });
+
+  // The first stage's text shows at once; the pieces drop in when it's seen.
+  mark(0);
+  if (!motion) return setBoard(0, false);
+  new IntersectionObserver(([entry]) => {
+    inView = entry.isIntersecting;
+    if (inView && !begun) {
+      begun = true;
+      go(0);
+    }
+    hold();
+  }, { threshold: 0.3 }).observe(root);
 }
 
 // ---------------------------------------------------------------- road to the crown
